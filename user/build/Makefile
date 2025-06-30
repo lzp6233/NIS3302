@@ -318,6 +318,30 @@ main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/portScan.dir/build.make CMakeFiles/portScan.dir/main.cpp.s
 .PHONY : main.cpp.s
 
+port/PortScanner.o: port/PortScanner.cpp.o
+.PHONY : port/PortScanner.o
+
+# target to build an object file
+port/PortScanner.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/portScan.dir/build.make CMakeFiles/portScan.dir/port/PortScanner.cpp.o
+.PHONY : port/PortScanner.cpp.o
+
+port/PortScanner.i: port/PortScanner.cpp.i
+.PHONY : port/PortScanner.i
+
+# target to preprocess a source file
+port/PortScanner.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/portScan.dir/build.make CMakeFiles/portScan.dir/port/PortScanner.cpp.i
+.PHONY : port/PortScanner.cpp.i
+
+port/PortScanner.s: port/PortScanner.cpp.s
+.PHONY : port/PortScanner.s
+
+# target to generate assembly for a file
+port/PortScanner.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/portScan.dir/build.make CMakeFiles/portScan.dir/port/PortScanner.cpp.s
+.PHONY : port/PortScanner.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -346,6 +370,9 @@ help:
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
+	@echo "... port/PortScanner.o"
+	@echo "... port/PortScanner.i"
+	@echo "... port/PortScanner.s"
 .PHONY : help
 
 
