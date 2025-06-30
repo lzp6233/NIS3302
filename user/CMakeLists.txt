@@ -21,12 +21,13 @@ FetchContent_Declare(docopt
 FetchContent_MakeAvailable(fmt)
 FetchContent_MakeAvailable(docopt)
 
-add_executable(ping
-    network.cpp
-    ping.cpp
+add_executable(portScan
+    ICMP/network.cpp
+    ICMP/ping.cpp
+    main.cpp
 )
 
-target_link_libraries(ping
+target_link_libraries(portScan
   PRIVATE
     fmt::fmt
     docopt

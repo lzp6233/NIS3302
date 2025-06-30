@@ -1,0 +1,9 @@
+libdir=/usr/local/lib
+includedir=/usr/local/include/docopt
+
+Name: docopt.cpp
+Description: C++11 port of docopt
+Version: 0.6.2
+Requires:
+Libs: -L${libdir} -ldocopt
+Cflags: -I${includedir}

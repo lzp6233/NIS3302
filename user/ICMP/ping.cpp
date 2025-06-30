@@ -18,6 +18,7 @@
 #include <string_view>
 
 #include "network.h"
+#include "ping.h"
 
 using double_milliseconds = std::chrono::duration<double, std::milli>;
 
@@ -260,29 +261,29 @@ public:
 
 } // namespace icmp_ns
 
-int main(int argc, char * argv[])
-{
-    using namespace std::chrono_literals;
-    if (argc < 2)
-    {
-        fmt::print("usage: ping_test <address>\n\n");
-        return -1;
-    }
+// int main(int argc, char * argv[])
+// {
+//     using namespace std::chrono_literals;
+//     if (argc < 2)
+//     {
+//         fmt::print("usage: ping_test <address>\n\n");
+//         return -1;
+//     }
 
-    auto address = dns_lookup(argv[1]);
-    fmt::print("PING {} ({}).\n", address, reverse_dns_lookup(address));
+//     auto address = dns_lookup(argv[1]);
+//     fmt::print("PING {} ({}).\n", address, reverse_dns_lookup(address));
 
-    const auto timeout = 2500ms;
-    for (int i = 0; i < 4; ++i)
-    {
-        auto duration = icmp_ns::ping(address, timeout);
-        if (duration)
-        {
-            fmt::print("ping from {}: time={:.2f}ms.\n", address, duration->count());
-        }
-        else
-        {
-            fmt::print("ping from {} timed out, no response after {}.\n", address, timeout);
-        }
-    }
-}
+//     const auto timeout = 2500ms;
+//     for (int i = 0; i < 4; ++i)
+//     {
+//         auto duration = icmp_ns::ping(address, timeout);
+//         if (duration)
+//         {
+//             fmt::print("ping from {}: time={:.2f}ms.\n", address, duration->count());
+//         }
+//         else
+//         {
+//             fmt::print("ping from {} timed out, no response after {}.\n", address, timeout);
+//         }
+//     }
+// }

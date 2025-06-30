@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/CMakeFiles/docopt-populate"
+		},
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/CMakeFiles/docopt-populate.rule"
+		},
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/CMakeFiles/docopt-populate-complete.rule"
+		},
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/docopt-populate-prefix/src/docopt-populate-stamp/docopt-populate-build.rule"
+		},
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/docopt-populate-prefix/src/docopt-populate-stamp/docopt-populate-configure.rule"
+		},
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/docopt-populate-prefix/src/docopt-populate-stamp/docopt-populate-download.rule"
+		},
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/docopt-populate-prefix/src/docopt-populate-stamp/docopt-populate-install.rule"
+		},
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/docopt-populate-prefix/src/docopt-populate-stamp/docopt-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/docopt-populate-prefix/src/docopt-populate-stamp/docopt-populate-patch.rule"
+		},
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/docopt-populate-prefix/src/docopt-populate-stamp/docopt-populate-test.rule"
+		},
+		{
+			"file" : "/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/docopt-populate-prefix/src/docopt-populate-stamp/docopt-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"docopt-populate"
+		],
+		"name" : "docopt-populate"
+	}
+}
