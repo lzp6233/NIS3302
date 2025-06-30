@@ -24,6 +24,7 @@ FetchContent_MakeAvailable(docopt)
 add_executable(portScan
     ICMP/network.cpp
     ICMP/ping.cpp
+    port/PortScanner.cpp
     main.cpp
 )
 

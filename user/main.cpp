@@ -4,6 +4,7 @@
 #include <string>
 #include <fmt/core.h>
 #include "ICMP/ping.h"
+#include "port/PortScanner.h"
 using namespace std::chrono_literals;
 // using namespace icmp_ns;
 
@@ -20,15 +21,29 @@ bool icmp_scan(const std::string& ip) {
         else
         {
             fmt::print("ping from {} timed out, no response after {}ms.\n", ip, timeout.count());
+            return false; // 如果 ping 超时，返回不可达
         }
     }
     return true;
 }
 
 // TCP端口扫描接口
-bool tcp_scan(const std::string& ip, int port) {
+bool tcp_scan(const std::string& ip, int option) {
     // TODO: 调用TCP扫描实现
-    std::cout << "[TCP] 扫描 " << ip << ":" << port << " ...\n";
+    std::cout << "[TCP] 扫描 " << ip << " ...\n";
+    if (option==0) {
+        ScanAllPorts(ip);
+      }
+      else if (option==1) {
+        ScanSpecificPort(ip);
+      }
+      else if (option==2) {
+        ScanCommonPorts(ip);
+      }
+      else {
+        std::cout << "Invalid option. Please try again." << std::endl;
+      }
+
     // 示例返回值
     return false;
 }
@@ -49,22 +64,13 @@ int main() {
         std::cout << "请输入目标IP地址: ";
         std::cin >> target_ip;
 
-        int port_count;
-        std::cout << "请输入要扫描的端口数量: ";
-        std::cin >> port_count;
-
-        std::vector<int> ports;
-        for (int i = 0; i < port_count; ++i) {
-            int port;
-            std::cout << "请输入第 " << (i + 1) << " 个端口号: ";
-            std::cin >> port;
-            ports.push_back(port);
+        std::cout << "请选择端口扫描选项（0-扫描所有端口，1-扫描指定端口，2-扫描常见端口）: ";
+        int option;
+        std::cin >> option;
+        while (option < 0 || option > 2) {
+            std::cout << "无效的选项，请重新选择。" << std::endl;
         }
-
-        for (int port : ports) {
-            bool open = tcp_scan(target_ip, port);
-            std::cout << "端口 " << port << (open ? " 开放" : " 关闭/过滤") << std::endl;
-        }
+        bool open = tcp_scan(target_ip, option);
     } else {
         std::cout << "无效的选择，程序退出。" << std::endl;
     }
