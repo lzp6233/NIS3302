@@ -275,7 +275,7 @@ void Report::print_output(int p,string ipAdd)
 void ArgumentParsing::calculate_prefix(string ip)
 {
     int i,k,l,m;
-    char post[3];
+    char post[16];
     int pos,preRange,pos1;
     string ipPre, *iplist,ipaddr;
     long double ip_num;
@@ -541,7 +541,8 @@ u_int16_t csum(unsigned short *pointer, int bytes )
     /*sum here is an accumulator (32bit). Just keep adding sequential 16 bit words and fold back the carry bits from top
      16 bits to lower bits */
     
-    register uint32_t sum = 0;   //might wanna make it of type register since it will change a lot.
+    // register uint32_t sum = 0;   //might wanna make it of type register since it will change a lot.
+    uint32_t sum = 0;
     //uint16_t *word = pointer;
     uint16_t check_sum=0;
     int bytes_left = bytes;
