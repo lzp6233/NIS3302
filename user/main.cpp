@@ -48,6 +48,18 @@ bool tcp_scan(const std::string& ip, int option) {
     return false;
 }
 
+bool tcp_syn_scan(const std::string& ip, int option) {
+    return false;
+}
+
+bool tcp_fin_scan(const std::string& ip, int option) {
+    return false;
+}
+
+bool udp_scan(const std::string& ip, int option) {
+    return false;   
+}
+
 int main() {
     std::cout << "请选择扫描类型（1-ICMP，2-TCP Connect, 3-TCP SYN, 4-TCP FIN, 5-UDP）：";
     int scan_type;
