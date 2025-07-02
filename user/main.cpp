@@ -29,7 +29,7 @@ bool icmp_scan(const std::string& ip) {
 
 // TCP端口扫描接口
 bool tcp_scan(const std::string& ip, int option) {
-    // TODO: 调用TCP扫描实现
+    // TODO: 调用TCP扫描实现 （tcp connect）
     std::cout << "[TCP] 扫描 " << ip << " ...\n";
     if (option==0) {
         ScanAllPorts(ip);
@@ -49,7 +49,7 @@ bool tcp_scan(const std::string& ip, int option) {
 }
 
 int main() {
-    std::cout << "请选择扫描类型（1-ICMP，2-TCP）：";
+    std::cout << "请选择扫描类型（1-ICMP，2-TCP Connect, 3-TCP SYN, 4-TCP FIN, 5-UDP）：";
     int scan_type;
     std::cin >> scan_type;
 
