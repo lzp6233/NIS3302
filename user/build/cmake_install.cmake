@@ -1,4 +1,4 @@
-# Install script for directory: /home/zipeng_liu/NIS3302/user
+# Install script for directory: /home/lemondrops/Desktop/NIS3302/user
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -44,12 +44,12 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/zipeng_liu/NIS3302/user/build/_deps/fmt-build/cmake_install.cmake")
+  include("/home/lemondrops/Desktop/NIS3302/user/build/_deps/fmt-build/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/zipeng_liu/NIS3302/user/build/_deps/docopt-build/cmake_install.cmake")
+  include("/home/lemondrops/Desktop/NIS3302/user/build/_deps/docopt-build/cmake_install.cmake")
 endif()
 
 if(CMAKE_INSTALL_COMPONENT)
@@ -60,5 +60,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/zipeng_liu/NIS3302/user/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/lemondrops/Desktop/NIS3302/user/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/ping.dir/ICMP/network.cpp.o CMakeFiles/ping.dir/ICMP/ping.cpp.o -o ping  -Wl,-rpath,/home/zipeng_liu/NIS3302/user/build/_deps/docopt-build _deps/fmt-build/libfmt.a _deps/docopt-build/libdocopt.so.0.6.2 
