@@ -28,4 +28,11 @@ void ScanSpecificPort(std::string hostNameArg);
 // 扫描常见端口
 void ScanCommonPorts(std::string hostNameArg);
 
+// TCP SYN扫描
+void TCPSynScan(const std::string& ip, int option);
+// TCP FIN扫描
+void TCPFinScan(const std::string& ip, int option);
+// UDP扫描
+void UDPScan(const std::string& ip, int option);
+
 #endif

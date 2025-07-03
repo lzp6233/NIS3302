@@ -32,6 +32,8 @@ target_link_libraries(portScan
   PRIVATE
     fmt::fmt
     docopt
+    net
+    pcap
 )
 
 #target_compile_options(ping PRIVATE -fsanitize=address -g)

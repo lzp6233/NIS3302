@@ -49,14 +49,17 @@ bool tcp_scan(const std::string& ip, int option) {
 }
 
 bool tcp_syn_scan(const std::string& ip, int option) {
+    TCPSynScan(ip, option);
     return false;
 }
 
 bool tcp_fin_scan(const std::string& ip, int option) {
+    TCPFinScan(ip, option);
     return false;
 }
 
 bool udp_scan(const std::string& ip, int option) {
+    UDPScan(ip, option);
     return false;   
 }
 

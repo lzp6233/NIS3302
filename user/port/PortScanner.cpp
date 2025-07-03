@@ -9,6 +9,8 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <netinet/tcp.h>
+#include <netinet/ip.h>
 #include <stdlib.h>
 #include <string>
 #include <iostream>
@@ -16,6 +18,8 @@
 #include <thread>
 #include <mutex>
 #include <bits/stdc++.h>
+#include <libnet.h>
+#include <pcap.h>
 
 std::mutex bufferLock;
 
@@ -556,6 +560,110 @@ void ScanCommonPorts(std::string hostNameArg) {
       std::cout << "Port " << buffer.at(i) << " is open!" << std::endl;
     }
   }
+}
+
+// 真正的TCP SYN/FIN扫描实现
+void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
+    char errbuf[LIBNET_ERRBUF_SIZE] = {0};
+    libnet_t *l = libnet_init(LIBNET_RAW4, nullptr, errbuf);
+    if (!l) {
+        std::cerr << "libnet_init() failed: " << errbuf << std::endl;
+        return;
+    }
+    uint16_t src_port = 40000 + (rand() % 10000);
+    uint32_t src_ip = libnet_get_ipaddr4(l);
+    uint32_t dst_ip = libnet_name2addr4(l, ip.c_str(), LIBNET_RESOLVE);
+    uint8_t flags = syn ? TH_SYN : TH_FIN;
+    libnet_build_tcp(
+        src_port, port, rand(), rand(), flags, 32767, 0, 0, LIBNET_TCP_H, nullptr, 0, l, 0
+    );
+    libnet_build_ipv4(
+        LIBNET_IPV4_H + LIBNET_TCP_H, 0, rand(), 0, 64, IPPROTO_TCP, 0,
+        src_ip, dst_ip, nullptr, 0, l, 0
+    );
+    if (libnet_write(l) < 0) {
+        std::cerr << "libnet_write() failed: " << libnet_geterror(l) << std::endl;
+        libnet_destroy(l);
+        return;
+    }
+    // pcap抓包
+    char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
+    std::string iface = get_default_iface();
+    pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 2000, pcap_errbuf);
+    if (!handle) {
+        std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
+        libnet_destroy(l);
+        return;
+    }
+    std::string filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
+    struct bpf_program fp;
+    if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
+        pcap_setfilter(handle, &fp) == -1) {
+        std::cerr << "pcap filter error" << std::endl;
+        pcap_close(handle);
+        libnet_destroy(l);
+        return;
+    }
+    struct pcap_pkthdr* header;
+    const u_char* pkt_data;
+    int res = pcap_next_ex(handle, &header, &pkt_data);
+    if (res == 1) {
+        const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
+        const struct tcphdr* tcp_hdr = (struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
+        if (tcp_hdr->th_flags & TH_SYN && tcp_hdr->th_flags & TH_ACK) {
+            std::cout << "Port " << port << " is OPEN (SYN+ACK received)\n";
+        } else if (tcp_hdr->th_flags & TH_RST) {
+            std::cout << "Port " << port << " is CLOSED (RST received)\n";
+        } else {
+            std::cout << "Port " << port << " got unknown response\n";
+        }
+    } else {
+        std::cout << "Port " << port << " no response (filtered or dropped)\n";
+    }
+    pcap_close(handle);
+    libnet_destroy(l);
+}
+
+void TCPSynScan(const std::string& ip, int option) {
+    std::vector<int> ports;
+    if (option == 0) {
+        for (int p = 1; p <= 1024; ++p) ports.push_back(p);
+    } else if (option == 1) {
+        int port;
+        std::cout << "Port #: ";
+        std::cin >> port;
+        ports.push_back(port);
+    } else if (option == 2) {
+        ports = {21, 22, 23, 25, 53, 80, 110, 139, 143, 443, 445, 3389};
+    } else {
+        std::cout << "Invalid option.\n";
+        return;
+    }
+    std::cout << "[SYN] 扫描 " << ip << " ...\n";
+    for (int port : ports) {
+        tcp_synfin_scan(ip, port, true);
+    }
+}
+
+void TCPFinScan(const std::string& ip, int option) {
+    std::vector<int> ports;
+    if (option == 0) {
+        for (int p = 1; p <= 1024; ++p) ports.push_back(p);
+    } else if (option == 1) {
+        int port;
+        std::cout << "Port #: ";
+        std::cin >> port;
+        ports.push_back(port);
+    } else if (option == 2) {
+        ports = {21, 22, 23, 25, 53, 80, 110, 139, 143, 443, 445, 3389};
+    } else {
+        std::cout << "Invalid option.\n";
+        return;
+    }
+    std::cout << "[FIN] 扫描 " << ip << " ...\n";
+    for (int port : ports) {
+        tcp_synfin_scan(ip, port, false);
+    }
 }
 
 // int main(int argc, char* argv[]){
