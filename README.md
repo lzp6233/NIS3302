@@ -48,3 +48,7 @@ NIS3302/
 > - 主要开发目录为 `user/`，其中 ICMP/ 负责 ICMP 协议实现，port/ 负责端口扫描实现，main.cpp 为主程序入口。  
 > - 参考项目和资料位于 reference/ 目录下，包括 explain_icmp_ping、port-scanner-cpp-main、PortScanner-master。  
 > - 报告模板和文档位于 report/。
+## 安装说明
+### 安装 libnet 开发库
+sudo apt update
+sudo apt install libnet1-dev

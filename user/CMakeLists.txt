@@ -10,11 +10,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 FetchContent_Declare(fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_REPOSITORY git@github.com:fmtlib/fmt.git
     GIT_TAG 10.1.1
 )
 FetchContent_Declare(docopt
-    GIT_REPOSITORY https://github.com/docopt/docopt.cpp.git
+    GIT_REPOSITORY git@github.com:docopt/docopt.cpp.git
     GIT_TAG v0.6.3
 )
 
