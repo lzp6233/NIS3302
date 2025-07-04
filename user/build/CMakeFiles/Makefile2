@@ -117,8 +117,8 @@ _deps/fmt-build/clean: _deps/fmt-build/CMakeFiles/fmt.dir/clean
 # Target rules for target CMakeFiles/portScan.dir
 
 # All Build rule for target.
-CMakeFiles/portScan.dir/all: _deps/docopt-build/CMakeFiles/docopt.dir/all
 CMakeFiles/portScan.dir/all: _deps/fmt-build/CMakeFiles/fmt.dir/all
+CMakeFiles/portScan.dir/all: _deps/docopt-build/CMakeFiles/docopt.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/portScan.dir/build.make CMakeFiles/portScan.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/portScan.dir/build.make CMakeFiles/portScan.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/lemondrops/Desktop/NIS3302/user/build/CMakeFiles --progress-num=7,8,9,10,11 "Built target portScan"

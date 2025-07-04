@@ -20,7 +20,7 @@
 #include <bits/stdc++.h>
 #include <libnet.h>
 #include <pcap.h>
-
+#include <ifaddrs.h>
 std::mutex bufferLock;
 
 bool TestPortConnection(std::string ip, int port) {
@@ -562,6 +562,34 @@ void ScanCommonPorts(std::string hostNameArg) {
   }
 }
 
+
+std::string get_default_iface() {
+    struct ifaddrs *ifap, *ifa;
+    struct sockaddr_in *sa;
+    char addr[INET_ADDRSTRLEN];
+    std::string iface;
+
+    if (getifaddrs(&ifap) == -1) {
+        perror("getifaddrs");
+        return "";
+    }
+
+    for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
+            sa = (struct sockaddr_in *)ifa->ifa_addr;
+            inet_ntop(AF_INET, &sa->sin_addr, addr, INET_ADDRSTRLEN);
+            // 排除回环地址（127.0.0.1），取第一个非回环的接口
+            if (strcmp(addr, "127.0.0.1") != 0) {
+                iface = ifa->ifa_name;
+                break;
+            }
+        }
+    }
+
+    freeifaddrs(ifap);
+    return iface;
+}
+
 // 真正的TCP SYN/FIN扫描实现
 void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
     char errbuf[LIBNET_ERRBUF_SIZE] = {0};
@@ -572,7 +600,7 @@ void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
     }
     uint16_t src_port = 40000 + (rand() % 10000);
     uint32_t src_ip = libnet_get_ipaddr4(l);
-    uint32_t dst_ip = libnet_name2addr4(l, ip.c_str(), LIBNET_RESOLVE);
+    uint32_t dst_ip = libnet_name2addr4(l, const_cast<char*>(ip.c_str()), LIBNET_RESOLVE);
     uint8_t flags = syn ? TH_SYN : TH_FIN;
     libnet_build_tcp(
         src_port, port, rand(), rand(), flags, 32767, 0, 0, LIBNET_TCP_H, nullptr, 0, l, 0
@@ -666,51 +694,52 @@ void TCPFinScan(const std::string& ip, int option) {
     }
 }
 
-// int main(int argc, char* argv[]){
-    
-//     //get the IP address from user input
-//     std::string hostname;
 
-//     if (argc > 1) {
-//       hostname = argv[1];
-//     }
-//     else {
-//       hostname = GetHost();
-//     }
+// UDP端口扫描实现
+void UDPScan(const std::string& ip, int option) {
+    std::vector<int> ports;
+    if (option == 0) {
+        for (int p = 1; p <= 1024; ++p) ports.push_back(p);
+    } else if (option == 1) {
+        int port;
+        std::cout << "Port #: ";
+        std::cin >> port;
+        ports.push_back(port);
+    } else if (option == 2) {
+        ports = {53, 67, 68, 69, 123, 161, 162, 500, 514, 520, 33434};
+    } else {
+        std::cout << "Invalid option.\n";
+        return;
+    }
+    std::cout << "[UDP] 扫描 " << ip << " ...\n";
+    for (int port : ports) {
+        int sock = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sock < 0) {
+            std::cerr << "Socket creation failed for port " << port << std::endl;
+            continue;
+        }
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
 
-//     //let them choose an option
-//     int option = -1;
+        struct timeval tv;
+        tv.tv_sec = 2;
+        tv.tv_usec = 0;
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-//     int count = 0; //if option selection fails, this disables reading the option from commandline
-    
-//     while (option<0||option>2) {
+        char sendbuf[1] = {0};
+        sendto(sock, sendbuf, sizeof(sendbuf), 0, (struct sockaddr*)&addr, sizeof(addr));
 
-//       if (argc>=2&&count==0) {
-//         try {
-//           option = std::stoi(argv[2]);
-//         }
-//         catch (...) {
-//           option = -1;
-//         }
-//       }
-//       else {
-//         option = GetOption();
-//       }
-      
-//       if (option==0) {
-//         ScanAllPorts(hostname);
-//       }
-//       else if (option==1) {
-//         ScanSpecificPort(hostname);
-//       }
-//       else if (option==2) {
-//         ScanCommonPorts(hostname);
-//       }
-//       else {
-//         std::cout << "Invalid option. Please try again." << std::endl;
-//         count++;
-//       }
-//     }
-
-//     return 0;
-// }
+        char recvbuf[1024];
+        socklen_t addrlen = sizeof(addr);
+        int ret = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, (struct sockaddr*)&addr, &addrlen);
+        if (ret < 0) {
+            std::cout << "Port " << port << " is open|filtered (no response)" << std::endl;
+        } else {
+            std::cout << "Port " << port << " is open (response received)" << std::endl;
+        }
+        close(sock);
+    }
+}
