@@ -50,5 +50,20 @@ NIS3302/
 > - 报告模板和文档位于 report/。
 ## 安装说明
 ### 安装 libnet 开发库
+```bash
 sudo apt update
 sudo apt install libnet1-dev
+```
+
+### 安装 libpcap 开发库
+```bash
+sudo apt update
+sudo apt install libpcap-dev
+```
+
+## start
+```bash
+cd build
+cmake .
+make
+./portScan
