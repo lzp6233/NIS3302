@@ -12,11 +12,17 @@ using json = nlohmann::json;
 json handleIcmpScan(const std::string& target) {
     json result;
     try {
-        bool alive = ping(target);  // 调用原有ICMP功能
+        auto ping_result = icmp_ns::ping(target, std::chrono::milliseconds(1000));  // 调用原有ICMP功能
+        bool alive = ping_result.has_value();
         result["status"] = "success";
         result["alive"] = alive;
         result["target"] = target;
-        result["message"] = alive ? "主机可达" : "主机不可达";
+        if (alive) {
+            result["message"] = "主机可达";
+            result["rtt_ms"] = ping_result.value().count();
+        } else {
+            result["message"] = "主机不可达";
+        }
     } catch (const std::exception& e) {
         result["status"] = "error";
         result["message"] = e.what();
@@ -33,29 +39,24 @@ json handlePortScan(const std::string& target,
                     bool resolveHostnames = false, bool detectService = false) {
     json result;
     try {
-        // 创建端口扫描器实例
-        PortScanner scanner(target, startPort, endPort);
-        
-        // 设置扫描选项
-        scanner.setThreads(threads);
-        scanner.setTimeout(timeout);
-        scanner.setResolveHostnames(resolveHostnames);
-        scanner.setDetectService(detectService);
-        
-        // 根据扫描类型执行不同的扫描方法
         std::vector<int> openPorts;
+        // 根据扫描类型执行不同的扫描方法
         if (scanType == "connect") {
-            openPorts = scanner.tcpConnectScan();
+            // 直接测试端口连通性
+            for (int port = startPort; port <= endPort; ++port) {
+                if (TestPortConnection(target, port)) {
+                    openPorts.push_back(port);
+                }
+            }
         } else if (scanType == "syn") {
-            openPorts = scanner.tcpSynScan();
+            TCPSynScan(target, 0); // 0: 你可以根据实际需要传递参数
         } else if (scanType == "fin") {
-            openPorts = scanner.tcpFinScan();
+            TCPFinScan(target, 0);
         } else if (scanType == "udp") {
-            openPorts = scanner.udpScan();
+            UDPScan(target, 0);
         } else {
             throw std::invalid_argument("不支持的扫描类型: " + scanType);
         }
-        
         // 构建结果
         result["status"] = "success";
         result["target"] = target;

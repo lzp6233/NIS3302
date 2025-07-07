@@ -73,9 +73,14 @@ else()
 endif()
 
 # 改进pcap库查找
-find_package(PCAP REQUIRED)
-target_link_libraries(portScan PRIVATE ${PCAP_LIBRARIES})
-target_include_directories(portScan PRIVATE ${PCAP_INCLUDE_DIRS})
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PCAP REQUIRED libpcap)
+
+include_directories(${PCAP_INCLUDE_DIRS})
+link_directories(${PCAP_LIBRARY_DIRS})
+add_definitions(${PCAP_CFLAGS_OTHER})
+
+target_link_libraries(portScan PRIVATE ${PCAP_LIBRARIES} net)
 
 # 特殊处理Windows上的pcap路径
 if(WIN32)
