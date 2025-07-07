@@ -64,7 +64,7 @@ bool udp_scan(const std::string& ip, int option) {
 }
 
 int main() {
-    std::cout << "请选择扫描类型（1-ICMP，2-TCP Connect, 3-TCP SYN, 4-TCP FIN, 5-UDP）：";
+    std::cout << "请选择扫描类型(1-ICMP,2-TCP Connect, 3-TCP SYN, 4-TCP FIN, 5-UDP):";
     int scan_type;
     std::cin >> scan_type;
 
@@ -86,7 +86,47 @@ int main() {
             std::cout << "无效的选项，请重新选择。" << std::endl;
         }
         bool open = tcp_scan(target_ip, option);
-    } else {
+    } 
+    else if (scan_type == 3) {
+        std::string target_ip;
+        std::cout << "请输入目标IP地址: ";
+        std::cin >> target_ip;
+
+        std::cout << "请选择端口扫描选项（0-扫描所有端口，1-扫描指定端口，2-扫描常见端口）: ";
+        int option;
+        std::cin >> option;
+        while (option < 0 || option > 2) {
+            std::cout << "无效的选项，请重新选择。" << std::endl;
+        }
+        bool open = tcp_syn_scan(target_ip, option);
+    } 
+    else if (scan_type == 4) {
+        std::string target_ip;
+        std::cout << "请输入目标IP地址: ";
+        std::cin >> target_ip;
+
+        std::cout << "请选择端口扫描选项（0-扫描所有端口，1-扫描指定端口，2-扫描常见端口）: ";
+        int option;
+        std::cin >> option;
+        while (option < 0 || option > 2) {
+            std::cout << "无效的选项，请重新选择。" << std::endl;
+        }
+        bool open = tcp_fin_scan(target_ip, option);
+    } 
+    else if (scan_type == 5) {
+        std::string target_ip;
+        std::cout << "请输入目标IP地址: ";
+        std::cin >> target_ip;
+
+        std::cout << "请选择端口扫描选项（0-扫描所有端口，1-扫描指定端口，2-扫描常见端口）: ";
+        int option;
+        std::cin >> option;
+        while (option < 0 || option > 2) {
+            std::cout << "无效的选项，请重新选择。" << std::endl;
+        }
+        bool open = udp_scan(target_ip, option);
+    }
+    else {
         std::cout << "无效的选择，程序退出。" << std::endl;
     }
     return 0;

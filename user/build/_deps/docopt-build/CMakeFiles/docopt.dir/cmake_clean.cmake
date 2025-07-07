@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  ".0"
   "libdocopt.pdb"
   "libdocopt.so"
   "libdocopt.so.0"

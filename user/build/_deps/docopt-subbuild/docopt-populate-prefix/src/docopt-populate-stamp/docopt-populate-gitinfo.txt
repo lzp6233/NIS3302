@@ -1,3 +1,15 @@
-repository='git@github.com:docopt/docopt.cpp.git'
-module=''
-tag='origin'
+# This is a generated file and its contents are an internal implementation detail.
+# The download step will be re-executed if anything in this file changes.
+# No other meaning or use of this file is supported.
+
+method=git
+command=/usr/bin/cmake;-P;/home/zipeng_liu/NIS3302/user/build/_deps/docopt-subbuild/docopt-populate-prefix/tmp/docopt-populate-gitclone.cmake
+source_dir=/home/zipeng_liu/NIS3302/user/build/_deps/docopt-src
+work_dir=/home/zipeng_liu/NIS3302/user/build/_deps
+repository=git@github.com:docopt/docopt.cpp.git
+remote=origin
+init_submodules=TRUE
+recurse_submodules=--recursive
+submodules=
+CMP0097=NEW
+
