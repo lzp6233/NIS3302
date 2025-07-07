@@ -60,10 +60,45 @@ sudo apt install libnet1-dev
 sudo apt update
 sudo apt install libpcap-dev
 ```
+## 使用说明
 
-## start
-```bash
-cd build
-cmake .
-make
-./portScan
+1. **编译项目**
+   ```bash
+   cd user
+   mkdir build
+   cd build
+   cmake ..
+   make
+   ```
+   编译完成后会在 `build/` 目录下生成可执行文件 `portScan`。
+    
+2. **运行程序**
+   ```bash
+   ./portScan
+   ```
+   按照提示输入目标IP地址和扫描选项，即可进行ICMP主机存活检测和TCP端口扫描。
+
+3. **主要功能**
+   - ICMP扫描（类似ping）：检测主机是否存活。
+   - TCP端口扫描：支持全端口扫描、常用端口扫描、指定端口扫描。
+   - 结果以命令行形式输出。
+
+4. **目录结构说明**
+   - `user/ICMP/`：ICMP协议相关实现（如ping功能）。
+   - `user/port/`：端口扫描相关实现。
+   - `user/main.cpp`：主程序入口。
+   - `reference/`：参考项目和资料。
+   - `report/`：各类报告模板和文档。
+
+5. **依赖库**
+   - `libnet`：用于构造和发送原始数据包。
+   - `libpcap`：用于捕获网络数据包。
+   - `fmt`：格式化输出库。
+   - `docopt`：命令行参数解析库。
+
+6. **常见问题**
+   - 需使用root权限运行以获取原始套接字权限。
+   - 若遇到依赖库缺失，请先按照上方“安装说明”安装相关开发库。
+
+7. **联系方式**
+   - 如有问题或建议，请联系项目成员或提交issue。
