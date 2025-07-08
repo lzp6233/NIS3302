@@ -29,20 +29,22 @@ bool icmp_scan(const std::string& ip) {
 
 // TCP端口扫描接口
 bool tcp_scan(const std::string& ip, int option) {
-    // TODO: 调用TCP扫描实现 （tcp connect）
     std::cout << "[TCP] 扫描 " << ip << " ...\n";
     if (option==0) {
         ScanAllPorts(ip);
-      }
-      else if (option==1) {
-        ScanSpecificPort(ip);
-      }
-      else if (option==2) {
+    }
+    else if (option==1) {
+        int port;
+        std::cout << "请输入要扫描的端口号: ";
+        std::cin >> port;
+        ScanSpecificPort(ip, port);
+    }
+    else if (option==2) {
         ScanCommonPorts(ip);
-      }
-      else {
+    }
+    else {
         std::cout << "Invalid option. Please try again." << std::endl;
-      }
+    }
 
     // 示例返回值
     return false;
