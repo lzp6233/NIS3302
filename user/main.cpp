@@ -84,8 +84,18 @@ int main() {
         std::cin >> option;
         while (option < 0 || option > 2) {
             std::cout << "无效的选项，请重新选择。" << std::endl;
+            std::cin >> option;
         }
-        bool open = tcp_scan(target_ip, option);
+        if (option == 1) {
+            int port;
+            std::cout << "请输入要扫描的端口号: ";
+            std::cin >> port;
+            ScanSpecificPort(target_ip, port);
+        } else if (option == 0) {
+            ScanAllPorts(target_ip);
+        } else if (option == 2) {
+            ScanCommonPorts(target_ip);
+        }
     } 
     else if (scan_type == 3) {
         std::string target_ip;

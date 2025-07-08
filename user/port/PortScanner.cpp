@@ -166,38 +166,19 @@ void ScanAllPorts(std::string hostNameArg) {
 
 }
 
-void ScanSpecificPort(std::string hostNameArg) {
-  
-  //get port
-  int port;
-
-  std::string portString;
-  std::cout << "Port #: ";
-  std::getline(std::cin, portString);
-
-  try {
-    port = std::stoi(portString);
-  }
-  catch (...) {
-    std::cout << "Invalid port number." << std::endl;
-    exit(0);
-  }
-
-
-  //test port number
-  if (port<1||port>65535) {
-    std::cout << "Invalid port number." << std::endl;
-    exit(0);
-  }
-
-
-  //test connection
-  if (TestPortConnection(hostNameArg, port)){
-    std::cout << "Port " << port << " is open!" << std::endl;
-  }
-  else {
-    std::cout << "Port " << port << " is closed." << std::endl;
-  }
+void ScanSpecificPort(std::string hostNameArg, int port) {
+    //test port number
+    if (port<1||port>65535) {
+        std::cout << "Invalid port number." << std::endl;
+        return;
+    }
+    //test connection
+    if (TestPortConnection(hostNameArg, port)){
+        std::cout << "Port " << port << " is open!" << std::endl;
+    }
+    else {
+        std::cout << "Port " << port << " is closed." << std::endl;
+    }
 }
 
 void ScanCommonPorts(std::string hostNameArg) {
