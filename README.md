@@ -60,7 +60,7 @@ sudo apt install libnet1-dev
 sudo apt update
 sudo apt install libpcap-dev
 ```
-## 使用说明
+## 使用说明（命令行）
 
 1. **编译项目**
    ```bash
@@ -102,3 +102,30 @@ sudo apt install libpcap-dev
 
 7. **联系方式**
    - 如有问题或建议，请联系项目成员或提交issue。
+
+## 使用说明（网页）
+
+### 编译项目
+   ```bash
+   cd user_ver_web
+   mkdir build
+   cd build
+   cmake ..
+   make
+   ```
+
+### 运行
+
+#### 运行后端（终端1）
+```bash
+cd /home/zipeng_liu/NIS3302/user_ver_web/build
+./portScan
+```
+
+#### 运行前端（终端2）
+```bash
+cd /home/zipeng_liu/NIS3302/user_ver_web
+python3 -m http.server 8000
+```
+
+#### 浏览器访问 `http://localhost:8000/port_scanner.html`
