@@ -109,6 +109,8 @@ int main() {
         std::cin >> option;
         while (option < 0 || option > 2) {
             std::cout << "无效的选项，请重新选择。" << std::endl;
+            std::cin >> option;
+
         }
         bool open = tcp_syn_scan(target_ip, option);
     } 
@@ -122,6 +124,7 @@ int main() {
         std::cin >> option;
         while (option < 0 || option > 2) {
             std::cout << "无效的选项，请重新选择。" << std::endl;
+            std::cin >> option;
         }
         bool open = tcp_fin_scan(target_ip, option);
     } 
@@ -135,6 +138,7 @@ int main() {
         std::cin >> option;
         while (option < 0 || option > 2) {
             std::cout << "无效的选项，请重新选择。" << std::endl;
+            std::cin >> option;
         }
         bool open = udp_scan(target_ip, option);
     }
