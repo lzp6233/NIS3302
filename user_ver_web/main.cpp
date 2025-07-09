@@ -109,6 +109,9 @@ int main() {
         {"Access-Control-Allow-Headers", "Content-Type"}
     });
     
+    // 设置静态文件服务
+    svr.set_mount_point("/", "./");
+    
     // 处理OPTIONS预检请求
     svr.Options("/(.*)", [](const httplib::Request&, httplib::Response& res) {
         res.set_header("Access-Control-Allow-Origin", "*");
@@ -156,7 +159,7 @@ int main() {
     });
     
     // 服务器根路径 - 返回API文档
-    svr.Get("/", [](const httplib::Request&, httplib::Response& res) {
+    svr.Get("/api", [](const httplib::Request&, httplib::Response& res) {
         res.set_content(R"(
             <h1>端口扫描API文档</h1>
             <h2>统一扫描接口</h2>
@@ -217,6 +220,7 @@ int main() {
     // 启动服务器
     fmt::print("端口扫描API服务器已启动，访问 http://localhost:8080\n");
     fmt::print("前端页面: http://localhost:8080/port_scanner.html\n");
+    fmt::print("API文档: http://localhost:8080/api\n");
     fmt::print("按 Ctrl+C 停止服务器\n");
     svr.listen("localhost", 8080);
     
