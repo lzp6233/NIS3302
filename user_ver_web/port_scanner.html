@@ -1068,8 +1068,8 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
                 scanType: currentScanType,
                 portStart,
                 portEnd,
-                threads: document.getElementById('threads')?.value || 100,
-                timeout: document.getElementById('timeout')?.value || 1000,
+                threads: Number(document.getElementById('threads')?.value) || 100,
+                timeout: Number(document.getElementById('timeout')?.value) || 1000,
                 resolveHostnames: document.getElementById('resolve-hostnames')?.checked || false,
                 detectService: document.getElementById('detect-service')?.checked || false
             })

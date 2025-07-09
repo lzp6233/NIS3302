@@ -102,7 +102,7 @@ int main() {
     // 创建HTTP服务器
     httplib::Server svr;
     
-    // 设置CORS头，允许前端跨域访问
+    // 设置CORS头，允许前端跨域访问（只用 set_default_headers，Options handler 不再重复设置）
     svr.set_default_headers({
         {"Access-Control-Allow-Origin", "*"},
         {"Access-Control-Allow-Methods", "GET, POST, OPTIONS"},
@@ -112,15 +112,15 @@ int main() {
     // 设置静态文件服务
     svr.set_mount_point("/", "./");
     
-    // 处理OPTIONS预检请求
+    // 处理OPTIONS预检请求（不再重复设置CORS头，只返回200即可）
     svr.Options("/(.*)", [](const httplib::Request&, httplib::Response& res) {
-        res.set_header("Access-Control-Allow-Origin", "*");
-        res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.status = 200;
     });
     
     // 统一的扫描端点 - 处理前端POST请求
     svr.Post("/scan", [](const httplib::Request& req, httplib::Response& res) {
+        // 输出收到的原始请求体，便于调试
+        std::cout << "[DEBUG] /scan 收到请求体: " << req.body << std::endl;
         try {
             // 解析JSON请求体
             json requestData = json::parse(req.body);
