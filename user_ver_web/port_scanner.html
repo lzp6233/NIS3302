@@ -918,6 +918,7 @@
         let currentTarget = ''; // 当前扫描目标
         let currentScanType = ''; // 当前扫描类型
         let currentPortRange = ''; // 当前端口范围
+        let portChartInstance = null;
 
         // 扫描功能
 document.getElementById('scan-form').addEventListener('submit', async function(e) {
@@ -983,20 +984,23 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
     
     // 创建端口分布图表
     const ctx = document.getElementById('port-chart').getContext('2d');
-    new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['开放', '过滤', '关闭'],
-            datasets: [{
-                data: [
-                    scanResults.openPorts.length, 
-                    scanResults.filteredPorts ? scanResults.filteredPorts.length : 0, 
-                    totalPorts - scanResults.openPorts.length - (scanResults.filteredPorts ? scanResults.filteredPorts.length : 0)
-                ],
-                backgroundColor: [
-                    '#00B42A', // 绿色 - 开放
-                    '#FF7D00', // 橙色 - 过滤
-                    '#86909C'  // 灰色 - 关闭
+if (portChartInstance) {
+    portChartInstance.destroy();
+}
+portChartInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+        labels: ['开放', '过滤', '关闭'],
+        datasets: [{
+            data: [
+                scanResults.openPorts.length,
+                scanResults.filteredPorts ? scanResults.filteredPorts.length : 0,
+                totalPorts - scanResults.openPorts.length - (scanResults.filteredPorts ? scanResults.filteredPorts.length : 0)
+            ],
+            backgroundColor: [
+                '#00B42A', // 绿色 - 开放
+                '#FF7D00', // 橙色 - 过滤
+                '#86909C'  // 灰色 - 关闭
                 ]
             }]
         }
