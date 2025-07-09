@@ -18,7 +18,7 @@ include(FetchContent)
 # 修复依赖配置
 # fmt - 添加关键编译选项
 FetchContent_Declare(fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt.git  # 改为HTTPS协议
+    GIT_REPOSITORY git@github.com:fmtlib/fmt.git  # 改为git协议
     GIT_TAG 10.1.1
     GIT_SHALLOW TRUE  # 加速克隆
     CMAKE_ARGS 
@@ -27,19 +27,19 @@ FetchContent_Declare(fmt
 )
 
 FetchContent_Declare(docopt
-    GIT_REPOSITORY https://github.com/docopt/docopt.cpp.git
+    GIT_REPOSITORY git@github.com:docopt/docopt.cpp.git
     GIT_TAG v0.6.3
     GIT_SHALLOW TRUE
 )
 
 FetchContent_Declare(httplib
-    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+    GIT_REPOSITORY git@github.com:yhirose/cpp-httplib.git
     GIT_TAG v0.14.1
     GIT_SHALLOW TRUE
 )
 
 FetchContent_Declare(json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_REPOSITORY git@github.com:nlohmann/json.git
     GIT_TAG v3.11.2
     GIT_SHALLOW TRUE
 )
