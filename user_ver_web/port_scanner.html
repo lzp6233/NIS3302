@@ -34,6 +34,10 @@
     </script>
     
     <style type="text/tailwindcss">
+        /* 让所有自定义单选按钮的中间小圆点选中时变蓝色，未选中时为白色 */
+        input[type="radio"].peer:checked + label .dot {
+            background-color: #165DFF !important;
+        }
         @layer utilities {
             .content-auto {
                 content-visibility: auto;
@@ -222,7 +226,7 @@
                                 <label for="scan-type-syn" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
                                         <div class="flex items-center space-x-1.5">
                                         <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                                            <div class="w-2 h-2 rounded-full bg-white"></div>
+                                            <div class="dot w-2 h-2 rounded-full bg-white"></div>
                                         </div>
                                         <div>
                                                     <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">TCP SYN扫描</p>
@@ -239,7 +243,7 @@
             <label for="scan-type-icmp" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
                 <div class="flex items-center space-x-1.5">
                     <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                        <div class="w-2 h-2 rounded-full bg-white"></div>
+                        <div class="dot w-2 h-2 rounded-full bg-white"></div>
                     </div>
                     <div>
                         <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">ICMP扫描</p>
@@ -256,7 +260,7 @@
             <label for="scan-type-connect" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
                 <div class="flex items-center space-x-1.5">
                     <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                        <div class="w-2 h-2 rounded-full bg-white"></div>
+                        <div class="dot w-2 h-2 rounded-full bg-white"></div>
                     </div>
                     <div>
                         <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">TCP Connect扫描</p>
@@ -273,7 +277,7 @@
             <label for="scan-type-fin" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
                 <div class="flex items-center space-x-1.5">
                     <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                        <div class="w-2 h-2 rounded-full bg-white"></div>
+                        <div class="dot w-2 h-2 rounded-full bg-white"></div>
                     </div>
                     <div>
                         <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">TCP Fin扫描</p>
@@ -290,7 +294,7 @@
             <label for="scan-type-udp" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
                 <div class="flex items-center space-x-1.5">
                     <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                        <div class="w-2 h-2 rounded-full bg-white"></div>
+                        <div class="dot w-2 h-2 rounded-full bg-white"></div>
                     </div>
                     <div>
                         <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">UDP扫描</p>
@@ -314,7 +318,7 @@
                                         <label for="port-range-common" class="flex items-center justify-between p-4 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200">
                                             <div class="flex items-center space-x-3">
                                                 <div class="w-6 h-6 rounded-full border-2 border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                                                    <div class="w-3 h-3 rounded-full bg-white"></div>
+                                                    <div class="dot w-3 h-3 rounded-full bg-white"></div>
                                                 </div>
                                                 <div>
                                                     <p class="text-sm font-medium text-gray-900">常用端口</p>
@@ -330,7 +334,7 @@
                                         <label for="port-range-all" class="flex items-center justify-between p-4 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200">
                                             <div class="flex items-center space-x-3">
                                                 <div class="w-6 h-6 rounded-full border-2 border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                                                    <div class="w-3 h-3 rounded-full bg-white"></div>
+                                                    <div class="dot w-3 h-3 rounded-full bg-white"></div>
                                                 </div>
                                                 <div>
                                                     <p class="text-sm font-medium text-gray-900">所有端口</p>
@@ -346,7 +350,7 @@
                                         <label for="port-range-custom" class="flex items-center justify-between p-4 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200">
                                             <div class="flex items-center space-x-3">
                                                 <div class="w-6 h-6 rounded-full border-2 border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                                                    <div class="w-3 h-3 rounded-full bg-white"></div>
+                                                    <div class="dot w-3 h-3 rounded-full bg-white"></div>
                                                 </div>
                                                 <div>
                                                     <p class="text-sm font-medium text-gray-900">自定义范围</p>
