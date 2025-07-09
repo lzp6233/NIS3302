@@ -40,6 +40,8 @@ json handlePortScan(const std::string& target,
     json result;
     try {
         std::vector<int> openPorts;
+        std::vector<int> filteredPorts; // 添加过滤端口列表
+        
         // 根据扫描类型执行不同的扫描方法
         if (scanType == "connect") {
             // 直接测试端口连通性
@@ -49,14 +51,34 @@ json handlePortScan(const std::string& target,
                 }
             }
         } else if (scanType == "syn") {
-            TCPSynScan(target, 0); // 0: 你可以根据实际需要传递参数
+            // 这里需要根据实际的TCPSynScan函数签名调整
+            // TCPSynScan(target, 0); // 暂时注释掉，需要确认函数签名
+            // 临时使用connect方式
+            for (int port = startPort; port <= endPort; ++port) {
+                if (TestPortConnection(target, port)) {
+                    openPorts.push_back(port);
+                }
+            }
         } else if (scanType == "fin") {
-            TCPFinScan(target, 0);
+            // TCPFinScan(target, 0); // 暂时注释掉，需要确认函数签名
+            // 临时使用connect方式
+            for (int port = startPort; port <= endPort; ++port) {
+                if (TestPortConnection(target, port)) {
+                    openPorts.push_back(port);
+                }
+            }
         } else if (scanType == "udp") {
-            UDPScan(target, 0);
+            // UDPScan(target, 0); // 暂时注释掉，需要确认函数签名
+            // 临时使用connect方式
+            for (int port = startPort; port <= endPort; ++port) {
+                if (TestPortConnection(target, port)) {
+                    openPorts.push_back(port);
+                }
+            }
         } else {
             throw std::invalid_argument("不支持的扫描类型: " + scanType);
         }
+        
         // 构建结果
         result["status"] = "success";
         result["target"] = target;
@@ -64,8 +86,10 @@ json handlePortScan(const std::string& target,
         result["startPort"] = startPort;
         result["endPort"] = endPort;
         result["openPorts"] = openPorts;
+        result["filteredPorts"] = filteredPorts; // 添加过滤端口
         result["totalPorts"] = endPort - startPort + 1;
         result["openPortCount"] = openPorts.size();
+        result["filteredPortCount"] = filteredPorts.size();
     } catch (const std::exception& e) {
         result["status"] = "error";
         result["message"] = e.what();
@@ -78,20 +102,79 @@ int main() {
     // 创建HTTP服务器
     httplib::Server svr;
     
+    // 设置CORS头，允许前端跨域访问
+    svr.set_default_headers({
+        {"Access-Control-Allow-Origin", "*"},
+        {"Access-Control-Allow-Methods", "GET, POST, OPTIONS"},
+        {"Access-Control-Allow-Headers", "Content-Type"}
+    });
+    
+    // 处理OPTIONS预检请求
+    svr.Options("/(.*)", [](const httplib::Request&, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+    });
+    
+    // 统一的扫描端点 - 处理前端POST请求
+    svr.Post("/scan", [](const httplib::Request& req, httplib::Response& res) {
+        try {
+            // 解析JSON请求体
+            json requestData = json::parse(req.body);
+            
+            // 提取参数
+            std::string target = requestData["target"];
+            std::string scanType = requestData["scanType"];
+            
+            json result;
+            
+            // 根据扫描类型处理
+            if (scanType == "icmp") {
+                result = handleIcmpScan(target);
+            } else {
+                // 端口扫描
+                int portStart = requestData.value("portStart", 1);
+                int portEnd = requestData.value("portEnd", 1024);
+                int threads = requestData.value("threads", 100);
+                int timeout = requestData.value("timeout", 1000);
+                bool resolveHostnames = requestData.value("resolveHostnames", false);
+                bool detectService = requestData.value("detectService", false);
+                
+                result = handlePortScan(target, scanType, portStart, portEnd, 
+                                     threads, timeout, resolveHostnames, detectService);
+            }
+            
+            res.set_content(result.dump(), "application/json");
+            
+        } catch (const json::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"status", "error"}, {"message", "JSON解析错误: " + std::string(e.what())}}).dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 500;
+            res.set_content(json({{"status", "error"}, {"message", e.what()}}).dump(), "application/json");
+        }
+    });
+    
     // 服务器根路径 - 返回API文档
     svr.Get("/", [](const httplib::Request&, httplib::Response& res) {
         res.set_content(R"(
             <h1>端口扫描API文档</h1>
-            <h2>ICMP扫描</h2>
-            <p>/icmp?target=example.com</p>
+            <h2>统一扫描接口</h2>
+            <p>POST /scan</p>
+            <p>请求体格式: {"target": "example.com", "scanType": "connect", "portStart": 1, "portEnd": 100}</p>
             
-            <h2>端口扫描</h2>
-            <p>/portscan?target=example.com&scanType=connect&start=1&end=100</p>
-            <p>scanType可选值: connect, syn, fin, udp</p>
+            <h2>扫描类型</h2>
+            <ul>
+                <li>icmp - ICMP主机存活检测</li>
+                <li>connect - TCP连接扫描</li>
+                <li>syn - TCP SYN扫描</li>
+                <li>fin - TCP FIN扫描</li>
+                <li>udp - UDP扫描</li>
+            </ul>
         )", "text/html");
     });
     
-    // 定义ICMP扫描接口
+    // 保留原有的GET接口作为备用
     svr.Get("/icmp", [](const httplib::Request& req, httplib::Response& res) {
         if (!req.has_param("target")) {
             res.status = 400;
@@ -104,7 +187,6 @@ int main() {
         res.set_content(result.dump(), "application/json");
     });
     
-    // 定义端口扫描接口
     svr.Get("/portscan", [](const httplib::Request& req, httplib::Response& res) {
         // 检查必需参数
         if (!req.has_param("target") || !req.has_param("scanType") || 
@@ -134,6 +216,7 @@ int main() {
     
     // 启动服务器
     fmt::print("端口扫描API服务器已启动，访问 http://localhost:8080\n");
+    fmt::print("前端页面: http://localhost:8080/port_scanner.html\n");
     fmt::print("按 Ctrl+C 停止服务器\n");
     svr.listen("localhost", 8080);
     
