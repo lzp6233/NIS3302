@@ -93,52 +93,30 @@ json tcpConnectScan(const std::string& target, const std::vector<int>& ports, in
 // 新增：TCP SYN扫描函数，返回JSON结果
 json tcpSynScan(const std::string& target, const std::vector<int>& ports) {
     json result;
-    std::vector<int> openPorts;
-    std::vector<int> filteredPorts;
-    
-    // 由于原始TCPSynScan函数直接输出结果，我们需要重新实现
-    // 这里使用TestPortConnection作为替代，但标记为SYN扫描
-    for (int port : ports) {
-        if (TestPortConnection(target, port)) {
-            openPorts.push_back(port);
-        }
-    }
-    
-    std::sort(openPorts.begin(), openPorts.end());
-    
+    // 新实现：调用 PortScanner.cpp 的 TCPSynScanJson
+    std::vector<int> openPorts = TCPSynScanJson(target, ports);
+    std::vector<int> filteredPorts; // 暂不区分filtered/closed
     result["openPorts"] = openPorts;
     result["filteredPorts"] = filteredPorts;
     result["totalScanned"] = ports.size();
     result["openCount"] = openPorts.size();
     result["filteredCount"] = filteredPorts.size();
     result["scanMethod"] = "SYN";
-    
     return result;
 }
 
 // 新增：TCP FIN扫描函数，返回JSON结果
 json tcpFinScan(const std::string& target, const std::vector<int>& ports) {
     json result;
-    std::vector<int> openPorts;
-    std::vector<int> filteredPorts;
-    
-    // 由于原始TCPFinScan函数直接输出结果，我们需要重新实现
-    // 这里使用TestPortConnection作为替代，但标记为FIN扫描
-    for (int port : ports) {
-        if (TestPortConnection(target, port)) {
-            openPorts.push_back(port);
-        }
-    }
-    
-    std::sort(openPorts.begin(), openPorts.end());
-    
+    // 新实现：调用 PortScanner.cpp 的 TCPFinScanJson
+    std::vector<int> openPorts = TCPFinScanJson(target, ports);
+    std::vector<int> filteredPorts; // 暂不区分filtered/closed
     result["openPorts"] = openPorts;
     result["filteredPorts"] = filteredPorts;
     result["totalScanned"] = ports.size();
     result["openCount"] = openPorts.size();
     result["filteredCount"] = filteredPorts.size();
     result["scanMethod"] = "FIN";
-    
     return result;
 }
 

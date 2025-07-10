@@ -634,46 +634,90 @@ void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
     libnet_destroy(l);
 }
 
-void TCPSynScan(const std::string& ip, int option) {
-    std::vector<int> ports;
-    if (option == 0) {
-        for (int p = 1; p <= 1024; ++p) ports.push_back(p);
-    } else if (option == 1) {
-        int port;
-        std::cout << "Port #: ";
-        std::cin >> port;
-        ports.push_back(port);
-    } else if (option == 2) {
-        ports = commonPorts; // 使用预定义的常见端口
-    } else {
-        std::cout << "Invalid option.\n";
-        return;
-    }
-    std::cout << "[SYN] 扫描 " << ip << " ...\n";
+
+// 新实现：多端口SYN扫描，返回开放端口列表
+std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports) {
+    std::vector<int> openPorts;
     for (int port : ports) {
-        tcp_synfin_scan(ip, port, true);
+        // SYN扫描，若收到SYN+ACK则认为开放
+        bool isOpen = false;
+        char errbuf[LIBNET_ERRBUF_SIZE] = {0};
+        libnet_t *l = libnet_init(LIBNET_RAW4, nullptr, errbuf);
+        if (!l) continue;
+        uint16_t src_port = 40000 + (rand() % 10000);
+        uint32_t src_ip = libnet_get_ipaddr4(l);
+        uint32_t dst_ip = libnet_name2addr4(l, const_cast<char*>(ip.c_str()), LIBNET_RESOLVE);
+        uint8_t flags = TH_SYN;
+        libnet_build_tcp(src_port, port, rand(), rand(), flags, 32767, 0, 0, LIBNET_TCP_H, nullptr, 0, l, 0);
+        libnet_build_ipv4(LIBNET_IPV4_H + LIBNET_TCP_H, 0, rand(), 0, 64, IPPROTO_TCP, 0, src_ip, dst_ip, nullptr, 0, l, 0);
+        if (libnet_write(l) < 0) { libnet_destroy(l); continue; }
+        char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
+        std::string iface = get_default_iface();
+        pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 2000, pcap_errbuf);
+        if (!handle) { libnet_destroy(l); continue; }
+        std::string filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
+        struct bpf_program fp;
+        if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
+            pcap_setfilter(handle, &fp) == -1) {
+            pcap_close(handle); libnet_destroy(l); continue;
+        }
+        struct pcap_pkthdr* header;
+        const u_char* pkt_data;
+        int res = pcap_next_ex(handle, &header, &pkt_data);
+        if (res == 1) {
+            const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
+            const struct tcphdr* tcp_hdr = (struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
+            if ((tcp_hdr->th_flags & TH_SYN) && (tcp_hdr->th_flags & TH_ACK)) {
+                isOpen = true;
+            }
+        }
+        pcap_close(handle);
+        libnet_destroy(l);
+        if (isOpen) openPorts.push_back(port);
     }
+    std::sort(openPorts.begin(), openPorts.end());
+    return openPorts;
 }
 
-void TCPFinScan(const std::string& ip, int option) {
-    std::vector<int> ports;
-    if (option == 0) {
-        for (int p = 1; p <= 1024; ++p) ports.push_back(p);
-    } else if (option == 1) {
-        int port;
-        std::cout << "Port #: ";
-        std::cin >> port;
-        ports.push_back(port);
-    } else if (option == 2) {
-        ports = commonPorts;
-    } else {
-        std::cout << "Invalid option.\n";
-        return;
-    }
-    std::cout << "[FIN] 扫描 " << ip << " ...\n";
+// 新实现：多端口FIN扫描，返回开放端口列表
+std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& ports) {
+    std::vector<int> openPorts;
     for (int port : ports) {
-        tcp_synfin_scan(ip, port, false);
+        // FIN扫描，若无响应则认为开放
+        bool isOpen = false;
+        char errbuf[LIBNET_ERRBUF_SIZE] = {0};
+        libnet_t *l = libnet_init(LIBNET_RAW4, nullptr, errbuf);
+        if (!l) continue;
+        uint16_t src_port = 40000 + (rand() % 10000);
+        uint32_t src_ip = libnet_get_ipaddr4(l);
+        uint32_t dst_ip = libnet_name2addr4(l, const_cast<char*>(ip.c_str()), LIBNET_RESOLVE);
+        uint8_t flags = TH_FIN;
+        libnet_build_tcp(src_port, port, rand(), rand(), flags, 32767, 0, 0, LIBNET_TCP_H, nullptr, 0, l, 0);
+        libnet_build_ipv4(LIBNET_IPV4_H + LIBNET_TCP_H, 0, rand(), 0, 64, IPPROTO_TCP, 0, src_ip, dst_ip, nullptr, 0, l, 0);
+        if (libnet_write(l) < 0) { libnet_destroy(l); continue; }
+        char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
+        std::string iface = get_default_iface();
+        pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 2000, pcap_errbuf);
+        if (!handle) { libnet_destroy(l); continue; }
+        std::string filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
+        struct bpf_program fp;
+        if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
+            pcap_setfilter(handle, &fp) == -1) {
+            pcap_close(handle); libnet_destroy(l); continue;
+        }
+        struct pcap_pkthdr* header;
+        const u_char* pkt_data;
+        int res = pcap_next_ex(handle, &header, &pkt_data);
+        if (res != 1) {
+            // 无响应，认为开放
+            isOpen = true;
+        }
+        pcap_close(handle);
+        libnet_destroy(l);
+        if (isOpen) openPorts.push_back(port);
     }
+    std::sort(openPorts.begin(), openPorts.end());
+    return openPorts;
 }
 
 
