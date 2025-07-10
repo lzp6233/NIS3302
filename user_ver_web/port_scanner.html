@@ -220,90 +220,86 @@
                             <div class="space-y-2">
                         <label class="block text-sm font-medium text-gray-700">扫描类型</label>
                             <div class="grid grid-cols-5 gap-2 overflow-x-auto pb-2 -mx-2 px-2">
-                                 <!-- TCP SYN扫描 -->
-                                 <div class="relative min-w-[120px]">
-                                <input type="radio" id="scan-type-syn" name="scan-type" value="syn" class="sr-only peer" checked>
-                                <label for="scan-type-syn" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
+                                <!-- ICMP扫描 -->
+                                <div class="relative min-w-[120px]">
+                                    <input type="radio" id="scan-type-icmp" name="scan-type" value="icmp" class="sr-only peer">
+                                    <label for="scan-type-icmp" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
                                         <div class="flex items-center space-x-1.5">
-                                        <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                                            <div class="dot w-2 h-2 rounded-full bg-white"></div>
+                                            <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
+                                                <div class="dot w-2 h-2 rounded-full bg-white"></div>
+                                            </div>
+                                            <div>
+                                                <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">ICMP扫描</p>
+                                                <p class="text-[9px] text-gray-500 whitespace-nowrap">主机存活</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                                    <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">TCP SYN扫描</p>
-                                                    <p class="text-[9px] text-gray-500 whitespace-nowrap">快速隐秘</p>
+                                        <i class="fa fa-info-circle text-gray-400 text-[10px]"></i>
+                                    </label>
+                                </div>
+                                <!-- TCP Connect扫描 -->
+                                <div class="relative min-w-[120px]">
+                                    <input type="radio" id="scan-type-connect" name="scan-type" value="connect" class="sr-only peer">
+                                    <label for="scan-type-connect" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
+                                        <div class="flex items-center space-x-1.5">
+                                            <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
+                                                <div class="dot w-2 h-2 rounded-full bg-white"></div>
+                                            </div>
+                                            <div>
+                                                <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">TCP Connect扫描</p>
+                                                <p class="text-[9px] text-gray-500 whitespace-nowrap">权限友好</p>
+                                            </div>
                                         </div>
+                                        <i class="fa fa-info-circle text-gray-400 text-[10px]"></i>
+                                    </label>
+                                </div>
+                                <!-- TCP SYN扫描 -->
+                                <div class="relative min-w-[120px]">
+                                    <input type="radio" id="scan-type-syn" name="scan-type" value="syn" class="sr-only peer" checked>
+                                    <label for="scan-type-syn" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
+                                        <div class="flex items-center space-x-1.5">
+                                            <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
+                                                <div class="dot w-2 h-2 rounded-full bg-white"></div>
+                                            </div>
+                                            <div>
+                                                <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">TCP SYN扫描</p>
+                                                <p class="text-[9px] text-gray-500 whitespace-nowrap">快速隐秘</p>
+                                            </div>
                                         </div>
-                                 <i class="fa fa-info-circle text-gray-400 text-[10px]"></i>
-                                        </label>
-                            </div>
-        
-        <!-- ICMP扫描 -->
-        <div class="relative min-w-[120px]">
-            <input type="radio" id="scan-type-icmp" name="scan-type" value="icmp" class="sr-only peer">
-            <label for="scan-type-icmp" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
-                <div class="flex items-center space-x-1.5">
-                    <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                        <div class="dot w-2 h-2 rounded-full bg-white"></div>
-                    </div>
-                    <div>
-                        <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">ICMP扫描</p>
-                        <p class="text-[9px] text-gray-500 whitespace-nowrap">主机存活</p>
-                    </div>
-                </div>
-                <i class="fa fa-info-circle text-gray-400 text-[10px]"></i>
-            </label>
-        </div>
-        
-        <!-- TCP Connect扫描 -->
-        <div class="relative min-w-[120px]">
-            <input type="radio" id="scan-type-connect" name="scan-type" value="connect" class="sr-only peer">
-            <label for="scan-type-connect" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
-                <div class="flex items-center space-x-1.5">
-                    <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                        <div class="dot w-2 h-2 rounded-full bg-white"></div>
-                    </div>
-                    <div>
-                        <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">TCP Connect扫描</p>
-                        <p class="text-[9px] text-gray-500 whitespace-nowrap">权限友好</p>
-                    </div>
-                </div>
-                <i class="fa fa-info-circle text-gray-400 text-[10px]"></i>
-            </label>
-        </div>
-        
-        <!-- TCP Fin扫描 -->
-        <div class="relative min-w-[120px]">
-            <input type="radio" id="scan-type-fin" name="scan-type" value="fin" class="sr-only peer">
-            <label for="scan-type-fin" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
-                <div class="flex items-center space-x-1.5">
-                    <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                        <div class="dot w-2 h-2 rounded-full bg-white"></div>
-                    </div>
-                    <div>
-                        <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">TCP Fin扫描</p>
-                        <p class="text-[9px] text-gray-500 whitespace-nowrap">防火墙规避</p>
-                    </div>
-                </div>
-                <i class="fa fa-info-circle text-gray-400 text-[10px]"></i>
-            </label>
-        </div>
-        
-        <!-- UDP扫描 -->
-        <div class="relative min-w-[120px]">
-            <input type="radio" id="scan-type-udp" name="scan-type" value="udp" class="sr-only peer">
-            <label for="scan-type-udp" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
-                <div class="flex items-center space-x-1.5">
-                    <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
-                        <div class="dot w-2 h-2 rounded-full bg-white"></div>
-                    </div>
-                    <div>
-                        <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">UDP扫描</p>
-                        <p class="text-[9px] text-gray-500 whitespace-nowrap">UDP端口检测</p>
-                    </div>
-                </div>
-                <i class="fa fa-info-circle text-gray-400 text-[10px]"></i>
-            </label>
-        </div>
+                                        <i class="fa fa-info-circle text-gray-400 text-[10px]"></i>
+                                    </label>
+                                </div>
+                                <!-- TCP Fin扫描 -->
+                                <div class="relative min-w-[120px]">
+                                    <input type="radio" id="scan-type-fin" name="scan-type" value="fin" class="sr-only peer">
+                                    <label for="scan-type-fin" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
+                                        <div class="flex items-center space-x-1.5">
+                                            <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
+                                                <div class="dot w-2 h-2 rounded-full bg-white"></div>
+                                            </div>
+                                            <div>
+                                                <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">TCP Fin扫描</p>
+                                                <p class="text-[9px] text-gray-500 whitespace-nowrap">防火墙规避</p>
+                                            </div>
+                                        </div>
+                                        <i class="fa fa-info-circle text-gray-400 text-[10px]"></i>
+                                    </label>
+                                </div>
+                                <!-- UDP扫描 -->
+                                <div class="relative min-w-[120px]">
+                                    <input type="radio" id="scan-type-udp" name="scan-type" value="udp" class="sr-only peer">
+                                    <label for="scan-type-udp" class="flex items-center justify-between p-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:border-primary peer-checked:bg-primary/5 transition-colors duration-200 h-full">
+                                        <div class="flex items-center space-x-1.5">
+                                            <div class="w-4 h-4 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
+                                                <div class="dot w-2 h-2 rounded-full bg-white"></div>
+                                            </div>
+                                            <div>
+                                                <p class="text-[10px] font-medium text-gray-900 whitespace-nowrap">UDP扫描</p>
+                                                <p class="text-[9px] text-gray-500 whitespace-nowrap">UDP端口检测</p>
+                                            </div>
+                                        </div>
+                                        <i class="fa fa-info-circle text-gray-400 text-[10px]"></i>
+                                    </label>
+                                </div>
     </div>
 </div>
 
