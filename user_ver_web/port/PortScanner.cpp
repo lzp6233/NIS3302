@@ -23,188 +23,8 @@
 #include <ifaddrs.h>
 std::mutex bufferLock;
 
-bool TestPortConnection(std::string ip, int port) {
 
-    //creates a socket on your machine and connects to the port of the IP address specified
-    struct sockaddr_in address;
-    int myNetworkSocket = -1;
-
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr(ip.c_str());
-    address.sin_port = htons(port);
-
-    myNetworkSocket = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (myNetworkSocket==-1) {
-      std::cout << "Socket creation failed on port " << port << std::endl;
-      return false;
-    }
-
-    fcntl(myNetworkSocket, F_SETFL, O_NONBLOCK);
-
-    connect(myNetworkSocket, (struct sockaddr *)&address, sizeof(address)); 
-
-    //creates a file descriptor set and timeout interval
-    fd_set fileDescriptorSet;
-    struct timeval timeout;
-
-    FD_ZERO(&fileDescriptorSet);
-    FD_SET(myNetworkSocket, &fileDescriptorSet);
-    timeout.tv_sec = 2;
-    timeout.tv_usec = 0;
-
-    int connectionResponse = select(myNetworkSocket + 1, NULL, &fileDescriptorSet, NULL, &timeout);
-    if (connectionResponse == 1) {
-      int socketError;
-      socklen_t len = sizeof socketError;
-
-      getsockopt(myNetworkSocket, SOL_SOCKET, SO_ERROR, &socketError, &len);
-
-      if (socketError==0) {
-        close(myNetworkSocket);
-        return true;
-      }
-      else {
-        close(myNetworkSocket);
-        return false;
-      }
-    }
-    close(myNetworkSocket);
-    return false;
-}
-
-std::string GetHost() {
-  std::string inputHost;
-
-  std::cout << "Hostname/IP: ";
-  std::getline(std::cin, inputHost);
-
-  return inputHost;
-}
-
-void DisplayOptions() {
-  std::cout << std::endl << "OPTIONS:" << std::endl;
-
-  std::vector<std::string> optionDescriptions;
-
-  optionDescriptions.push_back("Scan all ports");
-  optionDescriptions.push_back("Scan for a specific port");
-  optionDescriptions.push_back("Scan all common ports");
-
-  for (int i = 0; i < optionDescriptions.size(); i++) {
-    std::cout << "[" << i << "] " << optionDescriptions.at(i) << std::endl;
-  }
-
-  std::cout << std::endl;
-}
-
-int GetOption() {
-  DisplayOptions();
-
-  std::string optionToReturn;
-  std::cout << "Option: ";
-  std::getline(std::cin, optionToReturn);
-
-  try {
-    return std::stoi(optionToReturn);
-  }
-  catch (...) {
-    return -1;
-  }
-}
-
-void ThreadTask(std::vector<int>* bufferArg, std::string hostNameArg, int port) {
-  if (TestPortConnection(hostNameArg, port)){
-    bufferLock.lock();
-    bufferArg->push_back(port);
-    bufferLock.unlock();
-  }
-}
-
-void ScanAllPorts(std::string hostNameArg) {
-  
-  std::vector<std::thread*> portTests;
-
-  std::vector<int> buffer;
-
-  int numOfTasks = 1000;
-
-  for (int i = 0; i < 65; i++) {
-    for (int j = 1; j < numOfTasks+1; j++) {
-      portTests.push_back(new std::thread(ThreadTask, &buffer, hostNameArg, (i*numOfTasks)+j));
-    }
-    for (int j = 0; j < numOfTasks; j++) {
-      portTests.at(j)->join();
-    }
-    for (int j = 0; j < numOfTasks; j++) {
-      delete portTests.at(j);
-    }
-    portTests = {};
-  }
-
-  for (int i = 1; i <= 535; i++) {
-    portTests.push_back(new std::thread(ThreadTask, &buffer, hostNameArg, i+65000));
-  }
-  for (int i = 0; i < 535; i++) {
-    portTests.at(i)->join();
-  }
-  for (int i = 0; i < 535; i++) {
-    delete portTests.at(i);
-  }
-
-  std::sort(buffer.begin(), buffer.end());
-
-  //print out the list of all the open ports
-  if (buffer.size()==0) {
-    std::cout << "No open ports" << std::endl;
-  }
-  else {
-    for (int i = 0; i < buffer.size(); i++) {
-      std::cout << "Port " << buffer.at(i) << " is open!" << std::endl;
-    }
-  }
-
-}
-
-void ScanSpecificPort(std::string hostNameArg) {
-  
-  //get port
-  int port;
-
-  std::string portString;
-  std::cout << "Port #: ";
-  std::getline(std::cin, portString);
-
-  try {
-    port = std::stoi(portString);
-  }
-  catch (...) {
-    std::cout << "Invalid port number." << std::endl;
-    exit(0);
-  }
-
-
-  //test port number
-  if (port<1||port>65535) {
-    std::cout << "Invalid port number." << std::endl;
-    exit(0);
-  }
-
-
-  //test connection
-  if (TestPortConnection(hostNameArg, port)){
-    std::cout << "Port " << port << " is open!" << std::endl;
-  }
-  else {
-    std::cout << "Port " << port << " is closed." << std::endl;
-  }
-}
-
-void ScanCommonPorts(std::string hostNameArg) {
-
-  //initialize list of common ports
-  std::vector<int> commonPorts;
-  commonPorts = {7, //Echo
+std::vector<int> commonPorts = {7, //Echo
     19, //Chargen
     20, //FTP Data Transfer
     21, //FTP Command Control
@@ -535,6 +355,168 @@ void ScanCommonPorts(std::string hostNameArg) {
     28960, //Call of Duty
     31337}; //Back Orifice
 
+
+
+bool TestPortConnection(std::string ip, int port) {
+
+    //creates a socket on your machine and connects to the port of the IP address specified
+    struct sockaddr_in address;
+    int myNetworkSocket = -1;
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = inet_addr(ip.c_str());
+    address.sin_port = htons(port);
+
+    myNetworkSocket = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (myNetworkSocket==-1) {
+      std::cout << "Socket creation failed on port " << port << std::endl;
+      return false;
+    }
+
+    fcntl(myNetworkSocket, F_SETFL, O_NONBLOCK);
+
+    connect(myNetworkSocket, (struct sockaddr *)&address, sizeof(address)); 
+
+    //creates a file descriptor set and timeout interval
+    fd_set fileDescriptorSet;
+    struct timeval timeout;
+
+    FD_ZERO(&fileDescriptorSet);
+    FD_SET(myNetworkSocket, &fileDescriptorSet);
+    timeout.tv_sec = 2;
+    timeout.tv_usec = 0;
+
+    int connectionResponse = select(myNetworkSocket + 1, NULL, &fileDescriptorSet, NULL, &timeout);
+    if (connectionResponse == 1) {
+      int socketError;
+      socklen_t len = sizeof socketError;
+
+      getsockopt(myNetworkSocket, SOL_SOCKET, SO_ERROR, &socketError, &len);
+
+      if (socketError==0) {
+        close(myNetworkSocket);
+        return true;
+      }
+      else {
+        close(myNetworkSocket);
+        return false;
+      }
+    }
+    close(myNetworkSocket);
+    return false;
+}
+
+std::string GetHost() {
+  std::string inputHost;
+
+  std::cout << "Hostname/IP: ";
+  std::getline(std::cin, inputHost);
+
+  return inputHost;
+}
+
+void DisplayOptions() {
+  std::cout << std::endl << "OPTIONS:" << std::endl;
+
+  std::vector<std::string> optionDescriptions;
+
+  optionDescriptions.push_back("Scan all ports");
+  optionDescriptions.push_back("Scan for a specific port");
+  optionDescriptions.push_back("Scan all common ports");
+
+  for (int i = 0; i < optionDescriptions.size(); i++) {
+    std::cout << "[" << i << "] " << optionDescriptions.at(i) << std::endl;
+  }
+
+  std::cout << std::endl;
+}
+
+int GetOption() {
+  DisplayOptions();
+
+  std::string optionToReturn;
+  std::cout << "Option: ";
+  std::getline(std::cin, optionToReturn);
+
+  try {
+    return std::stoi(optionToReturn);
+  }
+  catch (...) {
+    return -1;
+  }
+}
+
+void ThreadTask(std::vector<int>* bufferArg, std::string hostNameArg, int port) {
+  if (TestPortConnection(hostNameArg, port)){
+    bufferLock.lock();
+    bufferArg->push_back(port);
+    bufferLock.unlock();
+  }
+}
+
+void ScanAllPorts(std::string hostNameArg) {
+  
+  std::vector<std::thread*> portTests;
+
+  std::vector<int> buffer;
+
+  int numOfTasks = 1000;
+
+  for (int i = 0; i < 65; i++) {
+    for (int j = 1; j < numOfTasks+1; j++) {
+      portTests.push_back(new std::thread(ThreadTask, &buffer, hostNameArg, (i*numOfTasks)+j));
+    }
+    for (int j = 0; j < numOfTasks; j++) {
+      portTests.at(j)->join();
+    }
+    for (int j = 0; j < numOfTasks; j++) {
+      delete portTests.at(j);
+    }
+    portTests = {};
+  }
+
+  for (int i = 1; i <= 535; i++) {
+    portTests.push_back(new std::thread(ThreadTask, &buffer, hostNameArg, i+65000));
+  }
+  for (int i = 0; i < 535; i++) {
+    portTests.at(i)->join();
+  }
+  for (int i = 0; i < 535; i++) {
+    delete portTests.at(i);
+  }
+
+  std::sort(buffer.begin(), buffer.end());
+
+  //print out the list of all the open ports
+  if (buffer.size()==0) {
+    std::cout << "No open ports" << std::endl;
+  }
+  else {
+    for (int i = 0; i < buffer.size(); i++) {
+      std::cout << "Port " << buffer.at(i) << " is open!" << std::endl;
+    }
+  }
+
+}
+
+void ScanSpecificPort(std::string hostNameArg, int port) {
+    //test port number
+    if (port<1||port>65535) {
+        std::cout << "Invalid port number." << std::endl;
+        return;
+    }
+    //test connection
+    if (TestPortConnection(hostNameArg, port)){
+        std::cout << "Port " << port << " is open!" << std::endl;
+    }
+    else {
+        std::cout << "Port " << port << " is closed." << std::endl;
+    }
+}
+
+void ScanCommonPorts(std::string hostNameArg) {
+
   std::vector<std::thread> portTests;
 
   std::vector<int> buffer;
@@ -662,7 +644,7 @@ void TCPSynScan(const std::string& ip, int option) {
         std::cin >> port;
         ports.push_back(port);
     } else if (option == 2) {
-        ports = {21, 22, 23, 25, 53, 80, 110, 139, 143, 443, 445, 3389};
+        ports = commonPorts; // 使用预定义的常见端口
     } else {
         std::cout << "Invalid option.\n";
         return;
@@ -683,7 +665,7 @@ void TCPFinScan(const std::string& ip, int option) {
         std::cin >> port;
         ports.push_back(port);
     } else if (option == 2) {
-        ports = {21, 22, 23, 25, 53, 80, 110, 139, 143, 443, 445, 3389};
+        ports = commonPorts;
     } else {
         std::cout << "Invalid option.\n";
         return;
@@ -706,7 +688,7 @@ void UDPScan(const std::string& ip, int option) {
         std::cin >> port;
         ports.push_back(port);
     } else if (option == 2) {
-        ports = {53, 67, 68, 69, 123, 161, 162, 500, 514, 520, 33434};
+        ports = commonPorts;
     } else {
         std::cout << "Invalid option.\n";
         return;

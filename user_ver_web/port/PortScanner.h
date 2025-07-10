@@ -23,7 +23,7 @@ void ThreadTask(std::vector<int>* bufferArg, std::string hostNameArg, int port);
 void ScanAllPorts(std::string hostNameArg);
 
 // 扫描指定端口
-void ScanSpecificPort(std::string hostNameArg);
+void ScanSpecificPort(std::string hostNameArg, int port);
 
 // 扫描常见端口
 void ScanCommonPorts(std::string hostNameArg);
