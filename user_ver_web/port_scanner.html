@@ -888,7 +888,7 @@
         const clearPortsBtn = document.getElementById('clear-ports');
 
         // 常用端口列表
-        const commonPortsList = [80, 443, 22, 21, 23, 25, 53, 110, 143, 993, 995, 3306, 5432, 6379, 27017, 8080, 8443, 3389, 5900, 5901];
+        // const commonPortsList = [80, 443, 22, 21, 23, 25, 53, 110, 143, 993, 995, 3306, 5432, 6379, 27017, 8080, 8443, 3389, 5900, 5901];
 
         // 监听端口输入变化，实时预览
         customPortsTextarea.addEventListener('input', function() {
@@ -1030,7 +1030,7 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
             const customPortsText = document.getElementById('custom-ports').value.trim();
             if (!customPortsText) {
                 alert('请输入要扫描的端口列表');
-                return;
+                throw new Error('empty custom port list');
             }
             
             // 解析端口列表（支持逗号分隔和换行分隔）
@@ -1043,7 +1043,7 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
             
             if (portArray.length === 0) {
                 alert('请输入有效的端口号（1-65535）');
-                return;
+                throw new Error('invalid custom port list');
             }
             
             // 去重并排序
@@ -1053,10 +1053,10 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
             
             // 存储端口数组供后续使用
             window.customPortsArray = uniquePorts;
-            } else if (portRange === 'common') {
-        currentPortRange = '常用端口';
-        // 常用端口数量是动态的，这里设置为一个合理的默认值
-        totalPorts = 200; // 实际数量会根据PortScanner.cpp中的commonPorts数组确定
+        } else if (portRange === 'common') {
+            currentPortRange = '常用端口';
+            // window.customPortsArray = commonPortsList;
+            totalPorts = 327;
         } else if (portRange === 'all') {
             currentPortRange = '所有端口 (1-65535)';
             portEnd = 65535;
@@ -1377,103 +1377,9 @@ portChartInstance = new Chart(ctx, {
                 
                 // 扫描完成
                 if (progress >= 100) {
-                    clearInterval(timerInterval);
-                    
-                    // 显示扫描结果
-                    setTimeout(function() {
-                        document.getElementById('scan-status').classList.add('hidden');
-                        document.getElementById('scan-results').classList.remove('hidden');
-                        
-                        // 更新扫描结果信息
-                        document.getElementById('result-target').textContent = currentTarget;
-                        document.getElementById('result-time').textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                        document.getElementById('result-date').textContent = new Date().toLocaleString();
-                        
-                        // 更新端口统计
-                        if (scanResults) {
-                            document.getElementById('open-ports-count').textContent = scanResults.openPorts.length;
-                            document.getElementById('filtered-ports-count').textContent = scanResults.filteredPorts ? scanResults.filteredPorts.length : 0;
-                            document.getElementById('closed-ports-count').textContent = totalPorts - scanResults.openPorts.length - (scanResults.filteredPorts ? scanResults.filteredPorts.length : 0);
-                            document.getElementById('total-ports-count').textContent = totalPorts;
-                            
-                            // 创建端口分布图表
-                            const ctx = document.getElementById('port-chart').getContext('2d');
-                            new Chart(ctx, {
-                                type: 'doughnut',
-                                data: {
-                                    labels: ['开放', '过滤', '关闭'],
-                                    datasets: [{
-                                        data: [
-                                            scanResults.openPorts.length, 
-                                            scanResults.filteredPorts ? scanResults.filteredPorts.length : 0, 
-                                            totalPorts - scanResults.openPorts.length - (scanResults.filteredPorts ? scanResults.filteredPorts.length : 0)
-                                        ],
-                                        backgroundColor: [
-                                            '#00B42A', // 绿色 - 开放
-                                            '#FF7D00', // 橙色 - 过滤
-                                            '#86909C'  // 灰色 - 关闭
-                                        ],
-                                        borderWidth: 0
-                                    }]
-                                },
-                                options: {
-                                    responsive: true,
-                                    maintainAspectRatio: false,
-                                    plugins: {
-                                        legend: {
-                                            position: 'bottom',
-                                            labels: {
-                                                boxWidth: 15,
-                                                padding: 20
-                                            }
-                                        }
-                                    },
-                                    cutout: '70%'
-                                }
-                            });
-                            
-                            // 创建开放端口表格
-                            const openPortsTable = document.getElementById('open-ports-table');
-                            openPortsTable.innerHTML = '';
-                            
-                            if (scanResults.openPorts.length === 0) {
-                                openPortsTable.innerHTML = `
-                                    <tr>
-                                        <td colspan="5" class="px-6 py-4 text-center text-gray-500">暂无开放端口</td>
-                                    </tr>
-                                `;
-                            } else {
-                                // 按端口号排序
-                                scanResults.openPorts.sort((a, b) => a - b);
-                                
-                                scanResults.openPorts.forEach(port => {
-                                    const row = document.createElement('tr');
-                                    row.innerHTML = `
-                                        <td class="px-6 py-4 whitespace-nowrap">
-                                            <div class="text-sm font-medium text-gray-900">${port}</div>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap">
-                                            <div class="text-sm text-gray-900">TCP</div>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap">
-                                            <div class="text-sm text-gray-900">unknown</div>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap">
-                                            <div class="text-sm text-gray-900">unknown</div>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap">
-                                            <span class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">INFO</span>
-                                        </td>
-                                    `;
-                                    openPortsTable.appendChild(row);
-                                });
-                            }
-                        }
-                        
-                        // 添加到历史记录
-                        addToHistory(currentTarget, currentScanType, currentPortRange);
-                    }, 1000);
-                }
+    clearInterval(timerInterval);
+    // 不再在这里处理按钮和结果展示，全部交给主流程 finally 和 processScanResults
+}
             };
             
             // 取消扫描

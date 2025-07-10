@@ -21,6 +21,7 @@
 #include <libnet.h>
 #include <pcap.h>
 #include <ifaddrs.h>
+#include "../ICMP/network.h"
 std::mutex bufferLock;
 
 
@@ -357,54 +358,54 @@ std::vector<int> commonPorts = {7, //Echo
 
 
 
-bool TestPortConnection(std::string ip, int port) {
-
-    //creates a socket on your machine and connects to the port of the IP address specified
+bool TestPortConnection(const std::string& ip_addr, int port) {
     struct sockaddr_in address;
     int myNetworkSocket = -1;
-
+    // 只接受已解析的IP字符串，不再做DNS解析
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr(ip.c_str());
+    address.sin_addr.s_addr = inet_addr(ip_addr.c_str());
     address.sin_port = htons(port);
 
     myNetworkSocket = socket(AF_INET, SOCK_STREAM, 0);
-
     if (myNetworkSocket==-1) {
       std::cout << "Socket creation failed on port " << port << std::endl;
       return false;
     }
-
+    // 设置为非阻塞
     fcntl(myNetworkSocket, F_SETFL, O_NONBLOCK);
-
-    connect(myNetworkSocket, (struct sockaddr *)&address, sizeof(address)); 
-
-    //creates a file descriptor set and timeout interval
-    fd_set fileDescriptorSet;
-    struct timeval timeout;
-
-    FD_ZERO(&fileDescriptorSet);
-    FD_SET(myNetworkSocket, &fileDescriptorSet);
-    timeout.tv_sec = 2;
-    timeout.tv_usec = 0;
-
-    int connectionResponse = select(myNetworkSocket + 1, NULL, &fileDescriptorSet, NULL, &timeout);
-    if (connectionResponse == 1) {
-      int socketError;
-      socklen_t len = sizeof socketError;
-
-      getsockopt(myNetworkSocket, SOL_SOCKET, SO_ERROR, &socketError, &len);
-
-      if (socketError==0) {
+    int ret = connect(myNetworkSocket, (struct sockaddr *)&address, sizeof(address));
+    if (ret == 0) {
+        // 立即连接成功，端口开放
         close(myNetworkSocket);
         return true;
-      }
-      else {
+    } else if (errno != EINPROGRESS) {
+        // 连接出错且不是正在进行中，端口关闭
         close(myNetworkSocket);
         return false;
-      }
     }
-    close(myNetworkSocket);
-    return false;
+    // 使用select等待连接完成
+    fd_set writefds;
+    FD_ZERO(&writefds);
+    FD_SET(myNetworkSocket, &writefds);
+    struct timeval timeout;
+    timeout.tv_sec = 2;
+    timeout.tv_usec = 0;
+    int sel = select(myNetworkSocket + 1, NULL, &writefds, NULL, &timeout);
+    if (sel > 0 && FD_ISSET(myNetworkSocket, &writefds)) {
+        int so_error = 0;
+        socklen_t len = sizeof(so_error);
+        getsockopt(myNetworkSocket, SOL_SOCKET, SO_ERROR, &so_error, &len);
+        close(myNetworkSocket);
+        if (so_error == 0) {
+            return true; // 端口开放
+        } else {
+            return false; // 端口关闭
+        }
+    } else {
+        // select超时或出错，认为端口被过滤或无响应，按nmap行为判为关闭
+        close(myNetworkSocket);
+        return false;
+    }
 }
 
 std::string GetHost() {
@@ -447,8 +448,8 @@ int GetOption() {
   }
 }
 
-void ThreadTask(std::vector<int>* bufferArg, std::string hostNameArg, int port) {
-  if (TestPortConnection(hostNameArg, port)){
+void ThreadTask(std::vector<int>* bufferArg, const std::string& ip_addr, int port) {
+  if (TestPortConnection(ip_addr, port)){
     bufferLock.lock();
     bufferArg->push_back(port);
     bufferLock.unlock();
@@ -456,16 +457,22 @@ void ThreadTask(std::vector<int>* bufferArg, std::string hostNameArg, int port) 
 }
 
 void ScanAllPorts(std::string hostNameArg) {
-  
+  // 先做一次域名解析
+  std::string ip_addr = hostNameArg;
+  if (hostNameArg.find_first_not_of("0123456789.") != std::string::npos) {
+    ip_addr = dns_lookup(hostNameArg);
+    if (ip_addr.empty()) {
+      std::cerr << "DNS lookup failed for " << hostNameArg << std::endl;
+      std::cout << "No open ports" << std::endl;
+      return;
+    }
+  }
   std::vector<std::thread*> portTests;
-
   std::vector<int> buffer;
-
   int numOfTasks = 1000;
-
   for (int i = 0; i < 65; i++) {
     for (int j = 1; j < numOfTasks+1; j++) {
-      portTests.push_back(new std::thread(ThreadTask, &buffer, hostNameArg, (i*numOfTasks)+j));
+      portTests.push_back(new std::thread(ThreadTask, &buffer, ip_addr, (i*numOfTasks)+j));
     }
     for (int j = 0; j < numOfTasks; j++) {
       portTests.at(j)->join();
@@ -475,9 +482,8 @@ void ScanAllPorts(std::string hostNameArg) {
     }
     portTests = {};
   }
-
   for (int i = 1; i <= 535; i++) {
-    portTests.push_back(new std::thread(ThreadTask, &buffer, hostNameArg, i+65000));
+    portTests.push_back(new std::thread(ThreadTask, &buffer, ip_addr, i+65000));
   }
   for (int i = 0; i < 535; i++) {
     portTests.at(i)->join();
@@ -485,9 +491,7 @@ void ScanAllPorts(std::string hostNameArg) {
   for (int i = 0; i < 535; i++) {
     delete portTests.at(i);
   }
-
   std::sort(buffer.begin(), buffer.end());
-
   //print out the list of all the open ports
   if (buffer.size()==0) {
     std::cout << "No open ports" << std::endl;
@@ -497,7 +501,6 @@ void ScanAllPorts(std::string hostNameArg) {
       std::cout << "Port " << buffer.at(i) << " is open!" << std::endl;
     }
   }
-
 }
 
 void ScanSpecificPort(std::string hostNameArg, int port) {
@@ -506,8 +509,18 @@ void ScanSpecificPort(std::string hostNameArg, int port) {
         std::cout << "Invalid port number." << std::endl;
         return;
     }
+    // 先做一次域名解析
+    std::string ip_addr = hostNameArg;
+    if (hostNameArg.find_first_not_of("0123456789.") != std::string::npos) {
+        ip_addr = dns_lookup(hostNameArg);
+        if (ip_addr.empty()) {
+            std::cerr << "DNS lookup failed for " << hostNameArg << std::endl;
+            std::cout << "Port " << port << " is closed." << std::endl;
+            return;
+        }
+    }
     //test connection
-    if (TestPortConnection(hostNameArg, port)){
+    if (TestPortConnection(ip_addr, port)){
         std::cout << "Port " << port << " is open!" << std::endl;
     }
     else {
@@ -516,23 +529,27 @@ void ScanSpecificPort(std::string hostNameArg, int port) {
 }
 
 void ScanCommonPorts(std::string hostNameArg) {
-
+  // 先做一次域名解析
+  std::string ip_addr = hostNameArg;
+  if (hostNameArg.find_first_not_of("0123456789.") != std::string::npos) {
+    ip_addr = dns_lookup(hostNameArg);
+    if (ip_addr.empty()) {
+      std::cerr << "DNS lookup failed for " << hostNameArg << std::endl;
+      std::cout << "No open ports" << std::endl;
+      return;
+    }
+  }
   std::vector<std::thread> portTests;
-
   std::vector<int> buffer;
-
   //spawn threads
   for (int i = 0; i < commonPorts.size(); i++) {
-    portTests.push_back(std::thread(ThreadTask, &buffer, hostNameArg, commonPorts.at(i)));
+    portTests.push_back(std::thread(ThreadTask, &buffer, ip_addr, commonPorts.at(i)));
   }
-
   //wait for all threads to complete
   for (int i = 0; i < portTests.size(); i++) {
     portTests.at(i).join();
   }
-
   std::sort(buffer.begin(), buffer.end());
-
   //print out the list of all the open ports
   if (buffer.size()==0) {
     std::cout << "No open ports" << std::endl;
