@@ -119,7 +119,7 @@ sudo apt install libpcap-dev
 #### 运行后端（终端1）
 ```bash
 cd /home/zipeng_liu/NIS3302/user_ver_web/build
-./portScan
+sudo ./portScan
 ```
 
 #### 运行前端（终端2）
