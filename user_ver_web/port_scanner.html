@@ -498,10 +498,10 @@
                                         <i class="fa fa-download mr-1"></i>
                                         <span>导出</span>
                                     </button>
-                                    <button id="share-results" class="text-sm text-primary hover:text-primary/80 transition-colors duration-200 flex items-center">
+                                    <!-- <button id="share-results" class="text-sm text-primary hover:text-primary/80 transition-colors duration-200 flex items-center">
                                         <i class="fa fa-share-alt mr-1"></i>
                                         <span>分享</span>
-                                    </button>
+                                    </button> -->
                                 </div>
                             </div>
                             
@@ -1007,6 +1007,68 @@
         let currentPortRange = ''; // 当前端口范围
         let portChartInstance = null;
 
+
+function exportScanResults() {
+    // 检查是否有扫描结果
+    if (!scanResults) {
+        alert('暂无扫描结果可导出');
+        return;
+    }
+    
+    // 生成导出数据（以CSV为例）
+    const data = generateExportData(scanResults);
+    
+    // 创建下载链接
+    const blob = new Blob([data], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `port_scan_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// 生成导出数据（CSV格式）
+function generateExportData(results) {
+    // 处理ICMP扫描结果
+    if (currentScanType === 'icmp') {
+        const alive = results.alive;
+        const rtt = results.rtt_ms || 'N/A';
+        const status = alive ? '在线' : '离线';
+        
+        return [
+            '目标,扫描类型,主机状态,响应时间,扫描时间',
+            `${currentTarget},ICMP扫描,${alive ? '存活' : '不可达'},${rtt},${new Date().toLocaleString()}`
+        ].join('\n');
+    } 
+    // 处理端口扫描结果
+    else if (results.openPorts && results.openPorts.length > 0) {
+        // 表头
+        const header = '端口,状态,服务,版本,风险等级';
+        // 数据行
+        const rows = results.openPorts.map(port => {
+            // 假设每个端口对象包含 port、status、service、version、riskLevel
+            // 实际需根据后端返回的字段调整
+            const portData = port || {};
+            return `${portData.port || 'N/A'},${portData.status || '开放'},${portData.service || 'unknown'},${portData.version || 'unknown'},${portData.riskLevel || 'INFO'}`;
+        });
+        return [header, ...rows].join('\n');
+    } 
+    // 无开放端口
+    else {
+        return [
+            '扫描结果汇总',
+            `目标: ${currentTarget}`,
+            `扫描类型: ${currentScanType.toUpperCase()}`,
+            `端口范围: ${currentPortRange}`,
+            `扫描时间: ${new Date().toLocaleString()}`,
+            `结果: 无开放端口`
+        ].join('\n');
+    }
+}
+
         // 扫描功能
 document.getElementById('scan-form').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -1190,6 +1252,8 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
         // 更新表格标题
         document.querySelector('h4.text-lg.font-semibold.text-dark.mb-4').textContent = 'ICMP扫描结果';
         
+        window.scanResults = scanResults; // 存储扫描结果到全局变量
+
         // 添加到历史记录
         addToHistory(currentTarget, currentScanType, 'ICMP主机存活检测');
     };
@@ -1351,6 +1415,10 @@ portChartInstance = new Chart(ctx, {
     }
 });
 
+        const exportButton = document.getElementById('export-results');
+if (exportButton) {
+    exportButton.addEventListener('click', exportScanResults);
+}
             
             // 更新扫描进度
             const updateProgress = function() {
