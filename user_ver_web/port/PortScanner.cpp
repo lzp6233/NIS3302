@@ -17,6 +17,8 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#include <chrono>
+#include <algorithm>
 #include <bits/stdc++.h>
 #include <libnet.h>
 #include <pcap.h>
@@ -358,52 +360,94 @@ std::vector<int> commonPorts = {7, //Echo
 
 
 bool TestPortConnection(std::string ip, int port) {
+    // 对重要端口（如3306）进行多次重试
+    int max_retries = (port == 3306) ? 3 : 1;
+    
+    for (int retry = 0; retry < max_retries; retry++) {
+        //creates a socket on your machine and connects to the port of the IP address specified
+        struct sockaddr_in address;
+        int myNetworkSocket = -1;
 
-    //creates a socket on your machine and connects to the port of the IP address specified
-    struct sockaddr_in address;
-    int myNetworkSocket = -1;
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = inet_addr(ip.c_str());
+        address.sin_port = htons(port);
 
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr(ip.c_str());
-    address.sin_port = htons(port);
+        myNetworkSocket = socket(AF_INET, SOCK_STREAM, 0);
 
-    myNetworkSocket = socket(AF_INET, SOCK_STREAM, 0);
+        if (myNetworkSocket == -1) {
+            if (port == 3306) {
+                std::cout << "Socket creation failed on port " << port << " (retry " << retry + 1 << ")" << std::endl;
+            }
+            continue;
+        }
 
-    if (myNetworkSocket==-1) {
-      std::cout << "Socket creation failed on port " << port << std::endl;
-      return false;
+        // 设置socket选项
+        int opt = 1;
+        setsockopt(myNetworkSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+        fcntl(myNetworkSocket, F_SETFL, O_NONBLOCK);
+
+        int ret = connect(myNetworkSocket, (struct sockaddr *)&address, sizeof(address));
+        if (ret == 0) {
+            close(myNetworkSocket);
+            if (port == 3306 && retry > 0) {
+                std::cout << "MySQL端口3306在第" << retry + 1 << "次重试时连接成功" << std::endl;
+            }
+            return true;
+        } else if (errno != EINPROGRESS) {
+            close(myNetworkSocket);
+            continue;
+        }
+
+        //creates a file descriptor set and timeout interval
+        fd_set writefds, exceptfds;
+        struct timeval timeout;
+
+        FD_ZERO(&writefds);
+        FD_ZERO(&exceptfds);
+        FD_SET(myNetworkSocket, &writefds);
+        FD_SET(myNetworkSocket, &exceptfds);
+        
+        // 对MySQL端口使用更长的超时时间
+        timeout.tv_sec = (port == 3306) ? 8 : 5;
+        timeout.tv_usec = 0;
+
+        int connectionResponse = select(myNetworkSocket + 1, NULL, &writefds, &exceptfds, &timeout);
+        if (connectionResponse > 0) {
+            if (FD_ISSET(myNetworkSocket, &exceptfds)) {
+                close(myNetworkSocket);
+                continue;
+            }
+            
+            if (FD_ISSET(myNetworkSocket, &writefds)) {
+                int socketError;
+                socklen_t len = sizeof socketError;
+
+                getsockopt(myNetworkSocket, SOL_SOCKET, SO_ERROR, &socketError, &len);
+
+                if (socketError == 0) {
+                    close(myNetworkSocket);
+                    if (port == 3306 && retry > 0) {
+                        std::cout << "MySQL端口3306在第" << retry + 1 << "次重试时连接成功" << std::endl;
+                    }
+                    return true;
+                } else {
+                    if (port == 3306) {
+                        std::cout << "MySQL端口3306连接失败，错误: " << strerror(socketError) << " (retry " << retry + 1 << ")" << std::endl;
+                    }
+                    close(myNetworkSocket);
+                    continue;
+                }
+            }
+        } else {
+            if (port == 3306) {
+                std::cout << "MySQL端口3306连接超时 (retry " << retry + 1 << ")" << std::endl;
+            }
+            close(myNetworkSocket);
+            continue;
+        }
     }
-
-    fcntl(myNetworkSocket, F_SETFL, O_NONBLOCK);
-
-    connect(myNetworkSocket, (struct sockaddr *)&address, sizeof(address)); 
-
-    //creates a file descriptor set and timeout interval
-    fd_set fileDescriptorSet;
-    struct timeval timeout;
-
-    FD_ZERO(&fileDescriptorSet);
-    FD_SET(myNetworkSocket, &fileDescriptorSet);
-    timeout.tv_sec = 2;
-    timeout.tv_usec = 0;
-
-    int connectionResponse = select(myNetworkSocket + 1, NULL, &fileDescriptorSet, NULL, &timeout);
-    if (connectionResponse == 1) {
-      int socketError;
-      socklen_t len = sizeof socketError;
-
-      getsockopt(myNetworkSocket, SOL_SOCKET, SO_ERROR, &socketError, &len);
-
-      if (socketError==0) {
-        close(myNetworkSocket);
-        return true;
-      }
-      else {
-        close(myNetworkSocket);
-        return false;
-      }
-    }
-    close(myNetworkSocket);
+    
     return false;
 }
 
@@ -448,10 +492,26 @@ int GetOption() {
 }
 
 void ThreadTask(std::vector<int>* bufferArg, std::string hostNameArg, int port) {
+  // 对MySQL端口进行特殊处理
+  if (port == 3306) {
+    // 给MySQL端口更多时间，避免连接竞争
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  
   if (TestPortConnection(hostNameArg, port)){
     bufferLock.lock();
     bufferArg->push_back(port);
     bufferLock.unlock();
+    
+    // 对MySQL端口进行特殊提示
+    if (port == 3306) {
+      std::cout << "✓ 发现MySQL端口3306开放！" << std::endl;
+    }
+  } else {
+    // 对MySQL端口进行特殊提示
+    if (port == 3306) {
+      std::cout << "✗ MySQL端口3306关闭或不可达" << std::endl;
+    }
   }
 }
 
@@ -506,29 +566,57 @@ void ScanSpecificPort(std::string hostNameArg, int port) {
         std::cout << "Invalid port number." << std::endl;
         return;
     }
+    
+    std::cout << "正在测试端口 " << port << " (" << hostNameArg << ")..." << std::endl;
+    
+    // 对MySQL端口进行特殊处理
+    if (port == 3306) {
+        std::cout << "检测到MySQL端口，将进行多次重试测试..." << std::endl;
+    }
+    
     //test connection
     if (TestPortConnection(hostNameArg, port)){
-        std::cout << "Port " << port << " is open!" << std::endl;
+        std::cout << "✓ Port " << port << " is open!" << std::endl;
+        if (port == 3306) {
+            std::cout << "MySQL服务正在运行！" << std::endl;
+        }
     }
     else {
-        std::cout << "Port " << port << " is closed." << std::endl;
+        std::cout << "✗ Port " << port << " is closed." << std::endl;
+        if (port == 3306) {
+            std::cout << "MySQL服务未运行或不可达。" << std::endl;
+        }
     }
 }
 
 void ScanCommonPorts(std::string hostNameArg) {
-
-  std::vector<std::thread> portTests;
-
+  std::cout << "开始扫描常见端口 (共" << commonPorts.size() << "个端口)..." << std::endl;
+  
   std::vector<int> buffer;
-
-  //spawn threads
-  for (int i = 0; i < commonPorts.size(); i++) {
-    portTests.push_back(std::thread(ThreadTask, &buffer, hostNameArg, commonPorts.at(i)));
-  }
-
-  //wait for all threads to complete
-  for (int i = 0; i < portTests.size(); i++) {
-    portTests.at(i).join();
+  const int max_concurrent_threads = 80; // 限制并发线程数，避免资源竞争
+  
+  // 分批处理端口，避免同时创建过多线程
+  for (size_t i = 0; i < commonPorts.size(); i += max_concurrent_threads) {
+    std::vector<std::thread> portTests;
+    
+    // 创建当前批次的线程
+    size_t end = std::min(i + max_concurrent_threads, commonPorts.size());
+    for (size_t j = i; j < end; j++) {
+      portTests.push_back(std::thread(ThreadTask, &buffer, hostNameArg, commonPorts.at(j)));
+    }
+    
+    // 等待当前批次完成
+    for (auto& thread : portTests) {
+      thread.join();
+    }
+    
+    // 显示进度
+    std::cout << "已完成 " << end << "/" << commonPorts.size() << " 个端口扫描" << std::endl;
+    
+    // 在批次之间添加短暂延迟，让系统有时间恢复
+    if (end < commonPorts.size()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
   }
 
   std::sort(buffer.begin(), buffer.end());
@@ -538,6 +626,7 @@ void ScanCommonPorts(std::string hostNameArg) {
     std::cout << "No open ports" << std::endl;
   }
   else {
+    std::cout << "发现 " << buffer.size() << " 个开放端口:" << std::endl;
     for (int i = 0; i < buffer.size(); i++) {
       std::cout << "Port " << buffer.at(i) << " is open!" << std::endl;
     }

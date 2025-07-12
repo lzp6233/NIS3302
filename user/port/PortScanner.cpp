@@ -361,18 +361,25 @@ std::vector<int> commonPorts = {7, //Echo
 bool TestPortConnection(const std::string& ip_addr, int port) {
     struct sockaddr_in address;
     int myNetworkSocket = -1;
+    
     // 只接受已解析的IP字符串，不再做DNS解析
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = inet_addr(ip_addr.c_str());
     address.sin_port = htons(port);
 
     myNetworkSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (myNetworkSocket==-1) {
-      std::cout << "Socket creation failed on port " << port << std::endl;
-      return false;
+    if (myNetworkSocket == -1) {
+        std::cout << "Socket creation failed on port " << port << std::endl;
+        return false;
     }
+    
+    // 设置socket选项
+    int opt = 1;
+    setsockopt(myNetworkSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    
     // 设置为非阻塞
     fcntl(myNetworkSocket, F_SETFL, O_NONBLOCK);
+    
     int ret = connect(myNetworkSocket, (struct sockaddr *)&address, sizeof(address));
     if (ret == 0) {
         // 立即连接成功，端口开放
@@ -383,29 +390,44 @@ bool TestPortConnection(const std::string& ip_addr, int port) {
         close(myNetworkSocket);
         return false;
     }
+    
     // 使用select等待连接完成
-    fd_set writefds;
+    fd_set writefds, exceptfds;
     FD_ZERO(&writefds);
+    FD_ZERO(&exceptfds);
     FD_SET(myNetworkSocket, &writefds);
+    FD_SET(myNetworkSocket, &exceptfds);
+    
     struct timeval timeout;
-    timeout.tv_sec = 2;
+    timeout.tv_sec = 5;  // 增加超时时间到5秒
     timeout.tv_usec = 0;
-    int sel = select(myNetworkSocket + 1, NULL, &writefds, NULL, &timeout);
-    if (sel > 0 && FD_ISSET(myNetworkSocket, &writefds)) {
-        int so_error = 0;
-        socklen_t len = sizeof(so_error);
-        getsockopt(myNetworkSocket, SOL_SOCKET, SO_ERROR, &so_error, &len);
-        close(myNetworkSocket);
-        if (so_error == 0) {
-            return true; // 端口开放
-        } else {
-            return false; // 端口关闭
+    
+    int sel = select(myNetworkSocket + 1, NULL, &writefds, &exceptfds, &timeout);
+    
+    if (sel > 0) {
+        if (FD_ISSET(myNetworkSocket, &exceptfds)) {
+            // 连接出现异常
+            close(myNetworkSocket);
+            return false;
         }
-    } else {
-        // select超时或出错，认为端口被过滤或无响应，按nmap行为判为关闭
-        close(myNetworkSocket);
-        return false;
+        
+        if (FD_ISSET(myNetworkSocket, &writefds)) {
+            int so_error = 0;
+            socklen_t len = sizeof(so_error);
+            getsockopt(myNetworkSocket, SOL_SOCKET, SO_ERROR, &so_error, &len);
+            close(myNetworkSocket);
+            
+            if (so_error == 0) {
+                return true; // 端口开放
+            } else {
+                return false; // 端口关闭
+            }
+        }
     }
+    
+    // select超时或出错
+    close(myNetworkSocket);
+    return false;
 }
 
 std::string GetHost() {
@@ -449,10 +471,26 @@ int GetOption() {
 }
 
 void ThreadTask(std::vector<int>* bufferArg, const std::string& ip_addr, int port) {
+  // 对MySQL端口进行特殊处理
+  if (port == 3306) {
+    // 给MySQL端口更多时间，避免连接竞争
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  
   if (TestPortConnection(ip_addr, port)){
     bufferLock.lock();
     bufferArg->push_back(port);
     bufferLock.unlock();
+    
+    // 对MySQL端口进行特殊提示
+    // if (port == 3306) {
+    //   std::cout << "✓ 发现MySQL端口3306开放！" << std::endl;
+    // }
+  } else {
+    // 对MySQL端口进行特殊提示
+    // if (port == 3306) {
+    //   std::cout << "✗ MySQL端口3306关闭或不可达" << std::endl;
+    // }
   }
 }
 
@@ -519,12 +557,15 @@ void ScanSpecificPort(std::string hostNameArg, int port) {
             return;
         }
     }
+    
+    std::cout << "正在测试端口 " << port << " (" << ip_addr << ")..." << std::endl;
+    
     //test connection
     if (TestPortConnection(ip_addr, port)){
-        std::cout << "Port " << port << " is open!" << std::endl;
+        std::cout << "✓ Port " << port << " is open!" << std::endl;
     }
     else {
-        std::cout << "Port " << port << " is closed." << std::endl;
+        std::cout << "✗ Port " << port << " is closed." << std::endl;
     }
 }
 
@@ -539,22 +580,44 @@ void ScanCommonPorts(std::string hostNameArg) {
       return;
     }
   }
-  std::vector<std::thread> portTests;
+  
+  std::cout << "开始扫描常见端口 (共" << commonPorts.size() << "个端口)..." << std::endl;
+  
   std::vector<int> buffer;
-  //spawn threads
-  for (int i = 0; i < commonPorts.size(); i++) {
-    portTests.push_back(std::thread(ThreadTask, &buffer, ip_addr, commonPorts.at(i)));
+  const int max_concurrent_threads = 80; // 限制并发线程数，避免资源竞争
+  
+  // 分批处理端口，避免同时创建过多线程
+  for (size_t i = 0; i < commonPorts.size(); i += max_concurrent_threads) {
+    std::vector<std::thread> portTests;
+    
+    // 创建当前批次的线程
+    size_t end = std::min(i + max_concurrent_threads, commonPorts.size());
+    for (size_t j = i; j < end; j++) {
+      portTests.push_back(std::thread(ThreadTask, &buffer, ip_addr, commonPorts.at(j)));
+    }
+    
+    // 等待当前批次完成
+    for (auto& thread : portTests) {
+      thread.join();
+    }
+    
+    // 显示进度
+    std::cout << "已完成 " << end << "/" << commonPorts.size() << " 个端口扫描" << std::endl;
+    
+    // 在批次之间添加短暂延迟，让系统有时间恢复
+    if (end < commonPorts.size()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
   }
-  //wait for all threads to complete
-  for (int i = 0; i < portTests.size(); i++) {
-    portTests.at(i).join();
-  }
+  
   std::sort(buffer.begin(), buffer.end());
+  
   //print out the list of all the open ports
   if (buffer.size()==0) {
     std::cout << "No open ports" << std::endl;
   }
   else {
+    std::cout << "发现 " << buffer.size() << " 个开放端口:" << std::endl;
     for (int i = 0; i < buffer.size(); i++) {
       std::cout << "Port " << buffer.at(i) << " is open!" << std::endl;
     }
