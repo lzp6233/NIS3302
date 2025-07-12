@@ -103,6 +103,17 @@
         </div>
     </header>
 
+    <!-- 错误提示组件 -->
+    <div id="error-toast" class="fixed top-24 right-4 z-50 transform translate-x-full transition-transform duration-300 ease-in-out">
+        <div class="bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 max-w-sm">
+            <i class="fa fa-exclamation-triangle"></i>
+            <span id="error-message"></span>
+            <button id="error-close" class="ml-auto text-white hover:text-red-100 transition-colors duration-200">
+                <i class="fa fa-times"></i>
+            </button>
+        </div>
+    </div>
+
     <!-- 主内容区 -->
     <main class="flex-grow pt-20 pb-12">
         <!-- 英雄区域 -->
@@ -427,10 +438,14 @@
                             </div>
                             
                             <!-- 提交按钮 -->
-                            <div class="flex justify-center pt-4">
+                            <div class="flex justify-center space-x-4 pt-4">
                                 <button type="submit" id="scan-button" class="w-full md:w-auto px-8 py-3 bg-primary text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:bg-primary/90 transition-all duration-200 flex items-center justify-center">
                                     <i class="fa fa-play-circle mr-2"></i>
                                     <span>开始扫描</span>
+                                </button>
+                                <button type="button" id="reset-button" class="w-full md:w-auto px-8 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:bg-gray-600 transition-all duration-200 flex items-center justify-center">
+                                    <i class="fa fa-refresh mr-2"></i>
+                                    <span>重置</span>
                                 </button>
                             </div>
                         </form>
@@ -837,6 +852,9 @@
 
     <!-- JavaScript -->
     <script>
+        // 错误提示关闭按钮事件
+        document.getElementById('error-close').addEventListener('click', hideError);
+
         // 移动菜单切换
         document.getElementById('mobile-menu-button').addEventListener('click', function() {
             const mobileMenu = document.getElementById('mobile-menu');
@@ -868,6 +886,25 @@
             });
         });
 
+        // 扫描类型信息提示
+        document.querySelectorAll('input[name="scan-type"] + label i.fa-info-circle').forEach(function(icon) {
+            icon.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const scanType = this.closest('label').querySelector('input').value;
+                const helpMessages = {
+                    'icmp': 'ICMP扫描用于检测主机是否存活，通过发送ICMP Echo请求包来测试目标主机的可达性。',
+                    'connect': 'TCP Connect扫描是最基本的扫描方式，尝试与目标端口建立完整的TCP连接。需要较高权限，但结果最准确。',
+                    'syn': 'TCP SYN扫描发送SYN包到目标端口，如果收到SYN+ACK响应则认为端口开放。速度快且相对隐秘。',
+                    'fin': 'TCP FIN扫描发送FIN包到目标端口，某些防火墙不会记录这种扫描，但准确性较低。',
+                    'udp': 'UDP扫描发送UDP包到目标端口，如果收到ICMP端口不可达错误则认为端口关闭，否则可能开放。'
+                };
+                
+                showError(helpMessages[scanType] || '未知扫描类型');
+            });
+        });
+
         // 自定义端口范围切换
         document.querySelectorAll('input[name="port-range"]').forEach(function(radio) {
             radio.addEventListener('change', function() {
@@ -880,6 +917,70 @@
             });
         });
 
+        // 实时输入验证
+        const targetInput = document.getElementById('target');
+        targetInput.addEventListener('blur', function() {
+            const value = this.value.trim();
+            if (value && !isValidTarget(value)) {
+                this.classList.add('border-red-500');
+                this.classList.remove('border-gray-300');
+            } else {
+                this.classList.remove('border-red-500');
+                this.classList.add('border-gray-300');
+            }
+        });
+
+        targetInput.addEventListener('input', function() {
+            if (this.classList.contains('border-red-500')) {
+                this.classList.remove('border-red-500');
+                this.classList.add('border-gray-300');
+            }
+        });
+
+        // 高级选项实时验证
+        const threadsInput = document.getElementById('threads');
+        const timeoutInput = document.getElementById('timeout');
+
+        if (threadsInput) {
+            threadsInput.addEventListener('blur', function() {
+                const value = parseInt(this.value);
+                if (isNaN(value) || value < 1 || value > 1000) {
+                    this.classList.add('border-red-500');
+                    this.classList.remove('border-gray-300');
+                } else {
+                    this.classList.remove('border-red-500');
+                    this.classList.add('border-gray-300');
+                }
+            });
+
+            threadsInput.addEventListener('input', function() {
+                if (this.classList.contains('border-red-500')) {
+                    this.classList.remove('border-red-500');
+                    this.classList.add('border-gray-300');
+                }
+            });
+        }
+
+        if (timeoutInput) {
+            timeoutInput.addEventListener('blur', function() {
+                const value = parseInt(this.value);
+                if (isNaN(value) || value < 100 || value > 10000) {
+                    this.classList.add('border-red-500');
+                    this.classList.remove('border-gray-300');
+                } else {
+                    this.classList.remove('border-red-500');
+                    this.classList.add('border-gray-300');
+                }
+            });
+
+            timeoutInput.addEventListener('input', function() {
+                if (this.classList.contains('border-red-500')) {
+                    this.classList.remove('border-red-500');
+                    this.classList.add('border-gray-300');
+                }
+            });
+        }
+
         // 自定义端口输入处理
         const customPortsTextarea = document.getElementById('custom-ports');
         const portPreview = document.getElementById('port-preview');
@@ -890,9 +991,35 @@
         // 常用端口列表
         // const commonPortsList = [80, 443, 22, 21, 23, 25, 53, 110, 143, 993, 995, 3306, 5432, 6379, 27017, 8080, 8443, 3389, 5900, 5901];
 
-        // 监听端口输入变化，实时预览
+        // 监听端口输入变化，实时预览和验证
         customPortsTextarea.addEventListener('input', function() {
             updatePortPreview();
+            
+            // 清除错误样式
+            if (this.classList.contains('border-red-500')) {
+                this.classList.remove('border-red-500');
+                this.classList.add('border-gray-300');
+            }
+        });
+
+        customPortsTextarea.addEventListener('blur', function() {
+            const text = this.value.trim();
+            if (text) {
+                const portArray = text
+                    .split(/[,\n]/)
+                    .map(port => port.trim())
+                    .filter(port => port.length > 0)
+                    .map(port => parseInt(port))
+                    .filter(port => !isNaN(port) && port >= 1 && port <= 65535);
+
+                if (portArray.length === 0) {
+                    this.classList.add('border-red-500');
+                    this.classList.remove('border-gray-300');
+                } else {
+                    this.classList.remove('border-red-500');
+                    this.classList.add('border-gray-300');
+                }
+            }
         });
 
         // 添加常用端口按钮
@@ -912,7 +1039,38 @@
         clearPortsBtn.addEventListener('click', function() {
             customPortsTextarea.value = '';
             updatePortPreview();
+            // 清除错误样式
+            customPortsTextarea.classList.remove('border-red-500');
+            customPortsTextarea.classList.add('border-gray-300');
         });
+
+        // 表单重置功能
+        function resetForm() {
+            // 清除所有输入框的错误样式
+            const inputs = document.querySelectorAll('input, textarea');
+            inputs.forEach(input => {
+                input.classList.remove('border-red-500');
+                input.classList.add('border-gray-300');
+            });
+            
+            // 重置表单
+            document.getElementById('scan-form').reset();
+            
+            // 隐藏自定义端口范围
+            document.getElementById('custom-port-range').classList.add('hidden');
+            
+            // 隐藏端口预览
+            document.getElementById('port-preview').classList.add('hidden');
+            
+            // 显示端口范围选择
+            document.querySelector('.port-range-section').classList.remove('hidden');
+            
+            // 显示成功提示
+            showSuccess('表单已重置');
+        }
+
+        // 添加重置按钮事件
+        document.getElementById('reset-button').addEventListener('click', resetForm);
 
         // 更新端口预览
         function updatePortPreview() {
@@ -1006,6 +1164,124 @@
         let currentScanType = ''; // 当前扫描类型
         let currentPortRange = ''; // 当前端口范围
         let portChartInstance = null;
+        let errorTimeout = null; // 错误提示定时器
+
+        // 错误提示函数
+        function showError(message) {
+            const errorToast = document.getElementById('error-toast');
+            const errorMessage = document.getElementById('error-message');
+            
+            // 清除之前的定时器
+            if (errorTimeout) {
+                clearTimeout(errorTimeout);
+            }
+            
+            // 设置错误消息
+            errorMessage.textContent = message;
+            
+            // 显示错误提示
+            errorToast.classList.remove('translate-x-full');
+            errorToast.classList.add('translate-x-0');
+            
+            // 5秒后自动隐藏
+            errorTimeout = setTimeout(() => {
+                hideError();
+            }, 5000);
+        }
+
+        // 隐藏错误提示
+        function hideError() {
+            const errorToast = document.getElementById('error-toast');
+            errorToast.classList.remove('translate-x-0');
+            errorToast.classList.add('translate-x-full');
+        }
+
+        // 成功提示函数
+        function showSuccess(message) {
+            const errorToast = document.getElementById('error-toast');
+            const errorMessage = document.getElementById('error-message');
+            
+            // 清除之前的定时器
+            if (errorTimeout) {
+                clearTimeout(errorTimeout);
+            }
+            
+            // 设置成功消息并改变样式
+            errorMessage.textContent = message;
+            errorToast.querySelector('div').className = 'bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 max-w-sm';
+            errorToast.querySelector('i').className = 'fa fa-check-circle';
+            
+            // 显示成功提示
+            errorToast.classList.remove('translate-x-full');
+            errorToast.classList.add('translate-x-0');
+            
+            // 3秒后自动隐藏
+            errorTimeout = setTimeout(() => {
+                hideError();
+                // 恢复错误提示样式
+                errorToast.querySelector('div').className = 'bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 max-w-sm';
+                errorToast.querySelector('i').className = 'fa fa-exclamation-triangle';
+            }, 3000);
+        }
+
+        // 输入验证函数
+        function isValidTarget(target) {
+            // 检查是否为空
+            if (!target || target.trim() === '') {
+                return false;
+            }
+            
+            // 检查是否为有效的IP地址
+            const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+            if (ipRegex.test(target)) {
+                return true;
+            }
+            
+            // 检查是否为有效的主机名
+            const hostnameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/;
+            if (hostnameRegex.test(target) && target.length <= 253) {
+                return true;
+            }
+            
+            // 检查是否为localhost
+            if (target.toLowerCase() === 'localhost') {
+                return true;
+            }
+            
+            return false;
+        }
+
+        // 端口验证函数
+        function isValidPort(port) {
+            const portNum = parseInt(port);
+            return !isNaN(portNum) && portNum >= 1 && portNum <= 65535;
+        }
+
+        // 高级选项验证函数
+        function validateAdvancedOptions() {
+            const threads = document.getElementById('threads');
+            const timeout = document.getElementById('timeout');
+            
+            if (threads) {
+                const threadValue = parseInt(threads.value);
+                if (isNaN(threadValue) || threadValue < 1 || threadValue > 1000) {
+                    showError('线程数必须在1-1000之间');
+                    threads.focus();
+                    return false;
+                }
+            }
+            
+            if (timeout) {
+                const timeoutValue = parseInt(timeout.value);
+                if (isNaN(timeoutValue) || timeoutValue < 100 || timeoutValue > 10000) {
+                    showError('超时时间必须在100-10000毫秒之间');
+                    timeout.focus();
+                    return false;
+                }
+            }
+            
+            return true;
+        }
 
 
 function exportScanResults() {
@@ -1074,8 +1350,28 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
     e.preventDefault();
     
     // 获取表单数据
-    currentTarget = document.getElementById('target').value;
+    const targetInput = document.getElementById('target');
+    currentTarget = targetInput.value.trim();
     currentScanType = document.querySelector('input[name="scan-type"]:checked').value;
+    
+    // 输入验证
+    if (!currentTarget) {
+        showError('请输入目标IP地址或主机名');
+        targetInput.focus();
+        return;
+    }
+    
+    // 验证IP地址或主机名格式
+    if (!isValidTarget(currentTarget)) {
+        showError('请输入有效的IP地址或主机名');
+        targetInput.focus();
+        return;
+    }
+    
+    // 验证高级选项
+    if (!validateAdvancedOptions()) {
+        return;
+    }
     
     // ICMP扫描不需要端口范围
     if (currentScanType === 'icmp') {
@@ -1091,8 +1387,9 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
             // 解析自定义端口列表
             const customPortsText = document.getElementById('custom-ports').value.trim();
             if (!customPortsText) {
-                alert('请输入要扫描的端口列表');
-                throw new Error('empty custom port list');
+                showError('请输入要扫描的端口列表');
+                document.getElementById('custom-ports').focus();
+                return;
             }
             
             // 解析端口列表（支持逗号分隔和换行分隔）
@@ -1104,8 +1401,9 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
                 .filter(port => !isNaN(port) && port >= 1 && port <= 65535);  // 验证端口范围
             
             if (portArray.length === 0) {
-                alert('请输入有效的端口号（1-65535）');
-                throw new Error('invalid custom port list');
+                showError('请输入有效的端口号（1-65535）');
+                document.getElementById('custom-ports').focus();
+                return;
             }
             
             // 去重并排序
@@ -1256,6 +1554,9 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
 
         // 添加到历史记录
         addToHistory(currentTarget, currentScanType, 'ICMP主机存活检测');
+        
+        // 显示成功提示
+        showSuccess('ICMP扫描完成');
     };
 
     const processScanResults = function(scanResults) {
@@ -1354,6 +1655,9 @@ portChartInstance = new Chart(ctx, {
     
     // 添加到历史记录
     addToHistory(currentTarget, currentScanType, currentPortRange);
+    
+    // 显示成功提示
+    showSuccess('端口扫描完成');
 };
 
     try {
@@ -1405,7 +1709,19 @@ portChartInstance = new Chart(ctx, {
     } catch (error) {
         // 错误处理
         console.error('C++后端通信错误:', error);
-        alert('扫描过程中发生错误，请检查C++后端是否正常运行');
+        
+        // 根据错误类型显示不同的错误信息
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            showError('无法连接到扫描服务，请检查C++后端是否正常运行');
+        } else if (error.message.includes('C++后端请求失败')) {
+            showError('扫描服务返回错误，请稍后重试');
+        } else {
+            showError('扫描过程中发生未知错误，请稍后重试');
+        }
+        
+        // 隐藏扫描状态，显示无结果提示
+        document.getElementById('scan-status').classList.add('hidden');
+        document.getElementById('no-results').classList.remove('hidden');
     } finally {
         // 清理资源
         clearInterval(timerInterval);
