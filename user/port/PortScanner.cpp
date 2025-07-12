@@ -654,6 +654,8 @@ std::string get_default_iface() {
 
 // 真正的TCP SYN/FIN扫描实现
 void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
+    // 进度提示
+    std::cout << "[SYN/FIN] Scanning port " << port << "..." << std::endl;
     char errbuf[LIBNET_ERRBUF_SIZE] = {0};
     libnet_t *l = libnet_init(LIBNET_RAW4, nullptr, errbuf);
     if (!l) {
@@ -679,13 +681,16 @@ void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
     // pcap抓包
     char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
     std::string iface = get_default_iface();
+    std::cout << "抓包网卡: " << iface << " 目标IP: " << ip << std::endl;
     pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 2000, pcap_errbuf);
     if (!handle) {
         std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
         libnet_destroy(l);
         return;
     }
-    std::string filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
+    // 去掉 dst port 限制，只匹配目标IP的 TCP 包，便于调试
+    std::string filter_exp = "tcp and src host " + ip;
+    std::cout << "pcap filter: " << filter_exp << std::endl;
     struct bpf_program fp;
     if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
         pcap_setfilter(handle, &fp) == -1) {
@@ -700,6 +705,7 @@ void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
     if (res == 1) {
         const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
         const struct tcphdr* tcp_hdr = (struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
+        // 只判断目标IP和TCP标志位，不再要求dst port等于src_port
         if (tcp_hdr->th_flags & TH_SYN && tcp_hdr->th_flags & TH_ACK) {
             std::cout << "Port " << port << " is OPEN (SYN+ACK received)\n";
         } else if (tcp_hdr->th_flags & TH_RST) {
@@ -707,8 +713,10 @@ void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
         } else {
             std::cout << "Port " << port << " got unknown response\n";
         }
+    } else if (res == 0) {
+        std::cout << "Port " << port << " no response (timeout)" << std::endl;
     } else {
-        std::cout << "Port " << port << " no response (filtered or dropped)\n";
+        std::cout << "Port " << port << " error or no response" << std::endl;
     }
     pcap_close(handle);
     libnet_destroy(l);
