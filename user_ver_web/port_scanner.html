@@ -1431,6 +1431,7 @@ function generateExportData(results) {
             const riskLevel = getServiceRiskLevel(port, service);
             return `${port},开放,${service},unknown,${riskLevel}`;
         });
+        
         return [header, ...rows].join('\n');
     } 
     // 无开放端口
