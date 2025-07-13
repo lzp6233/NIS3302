@@ -69,30 +69,30 @@
 
 \begin{figure}[h]
 \centering
-\begin{tikzpicture}[
+\begin{tikzpicture} [
     box/.style={rectangle, draw, rounded corners, minimum width=2cm, minimum height=1cm, align=center},
     arrow/.style={->, thick}
 ]
     % 前端层
-    \node[box, fill=blue!20] (web) at (0,4) {Web前端\\HTML5/CSS/JS};
+    \node[box, fill=blue!20] (web) at (0,3.5) {Web前端\\HTML5/CSS/JS};
     
     % API层
-    \node[box, fill=green!20] (api) at (0,2.5) {RESTful API\\httplib};
+    \node[box, fill=green!20] (api) at (0,1.5) {RESTful API\\httplib};
     
     % 后端服务层
-    \node[box, fill=yellow!20] (backend) at (0,1) {C++后端服务};
+    \node[box, fill=yellow!20] (backend) at (0,0) {C++后端服务};
     
     % 功能模块层
-    \node[box, fill=orange!20] (icmp) at (-3,0) {ICMP模块\\ping.h/cpp};
-    \node[box, fill=orange!20] (port) at (0,0) {端口扫描模块\\PortScanner.h/cpp};
-    \node[box, fill=orange!20] (network) at (3,0) {网络模块\\network.h/cpp};
-    
-    % 连接
-    \draw[arrow] (web) -- (api);
-    \draw[arrow] (api) -- (backend);
-    \draw[arrow] (backend) -- (icmp);
-    \draw[arrow] (backend) -- (port);
-    \draw[arrow] (backend) -- (network);
+    \node[box, fill=orange!20] (icmp) at (-3.5,-2) {ICMP模块\\ping.h/cpp};
+    \node[box, fill=orange!20] (port) at (0,-2) {端口扫描模块\\PortScanner.h/cpp};
+    \node[box, fill=orange!20] (network) at (3.5,-2) {网络模块\\network.h/cpp};
+
+    % 连接（加长箭头）
+    \draw[arrow] (web) -- ++(0,-0.9) -| (api);
+    \draw[arrow] (api) -- ++(0,-0.9) -| (backend);
+    \draw[arrow] (backend) -- ++(-0.5,-0.9) -| (icmp);
+    \draw[arrow] (backend) -- ++(0,-0.9) -| (port);
+    \draw[arrow] (backend) -- ++(0.5,-0.9) -| (network);
 \end{tikzpicture}
 \caption{系统总体架构图}
 \label{fig:architecture}
@@ -336,7 +336,7 @@ ICMP扫描模块实现ping功能，用于检测目标主机的可达性，支持
 \begin{itemize}
     \item \textbf{测试目标}：常用端口(80, 443, 22, 21等)
     \item \textbf{测试结果}：准确识别开放端口，扫描速度快
-    \item \textbf{测试结论}：SYN扫描功能正常，扫描速度达到每秒数百个端口
+    \item \textbf{测试结论}：SYN扫描功能正常，扫描速度较快
 \end{itemize}
 
 \subsubsection{TCP Connect扫描测试}
@@ -425,6 +425,26 @@ ICMP扫描模块实现ping功能，用于检测目标主机的可达性，支持
     \item \textbf{文档编写}：负责技术文档和用户手册编写
 \end{itemize}
 
+
+\begin{table}[H]
+\centering
+\renewcommand{\arraystretch}{1.3} % 可选：增加行高
+\setlength{\tabcolsep}{18pt}      % 增加列间距，默认6pt，可根据需要调整
+\begin{tabular}{|p{3cm}|p{2cm}|p{5cm}|p{3cm}|}
+\hline
+姓名 & 是否组长 & 任务 & 评分 \\
+\hline
+刘梓芃 & 是 & 内容A & 说明A \\
+\hline
+聂鸣涛 & 否 & 内容B & 说明B \\
+\hline
+李卓恒 & 否 & 内容C & 说明C \\
+\hline
+张煜哲 & 否 & 内容D & 说明D \\
+\hline
+\end{tabular}
+\caption{项目组成员贡献表}
+\end{table}
 %%----------- 参考文献 -------------------%%
 %在reference.bib文件中填写参考文献，此处自动生成
 
