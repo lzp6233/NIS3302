@@ -1423,26 +1423,33 @@ function generateExportData(results) {
     } 
     // 处理端口扫描结果
     else if (results.openPorts && results.openPorts.length > 0) {
+        // 根据扫描类型确定状态文本
+        const isFinScan = currentScanType === 'fin';
+        const statusText = isFinScan ? '开放|过滤' : '开放';
+        
         // 表头
         const header = '端口,状态,服务,版本,风险等级';
         // 数据行
         const rows = results.openPorts.map(port => {
             const service = predictService(port);
             const riskLevel = getServiceRiskLevel(port, service);
-            return `${port},开放,${service},unknown,${riskLevel}`;
+            return `${port},${statusText},${service},unknown,${riskLevel}`;
         });
         
         return [header, ...rows].join('\n');
     } 
     // 无开放端口
     else {
+        const isFinScan = currentScanType === 'fin';
+        const resultText = isFinScan ? '无开放|过滤端口' : '无开放端口';
+        
         return [
             '扫描结果汇总',
             `目标: ${currentTarget}`,
             `扫描类型: ${currentScanType.toUpperCase()}`,
             `端口范围: ${currentPortRange}`,
             `扫描时间: ${new Date().toLocaleString()}`,
-            `结果: 无开放端口`
+            `结果: ${resultText}`
         ].join('\n');
     }
 }
@@ -1529,8 +1536,8 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
     // 重置扫描状态
     scannedPorts = 0;
     document.getElementById('scan-progress-bar').style.width = '0%';
-    document.getElementById('scan-progress-text').textContent = '0%';
-    document.getElementById('scan-speed').textContent = '0 端口/秒';
+    document.getElementById('scan-progress-text').textContent = '准备中...';
+    document.getElementById('scan-speed').textContent = '等待开始';
     document.getElementById('scan-time').textContent = '00:00:00';
     
     // 显示扫描状态
@@ -1552,8 +1559,13 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
     startTime = new Date();
     scanInProgress = true;
 
-    // 启动计时器更新扫描进度（每50ms更新一次）
-    timerInterval = setInterval(updateProgress, 50);
+    // 启动计时器更新扫描时间（每1秒更新一次）
+    timerInterval = setInterval(updateScanTime, 1000);
+    
+    // 显示扫描开始提示
+    document.getElementById('scan-progress-text').textContent = '扫描进行中...';
+    document.getElementById('scan-progress-bar').style.width = '50%';
+    document.getElementById('scan-speed').textContent = '计算中...';
 
     // ICMP扫描结果处理函数
     const processIcmpResults = function(scanResults) {
@@ -1662,8 +1674,11 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
     };
 
     const processScanResults = function(scanResults) {
+        // 根据扫描类型调整显示
+        const isFinScan = currentScanType === 'fin';
+        
         // 恢复端口统计标签为默认值
-        document.querySelector('#open-ports-count').parentElement.querySelector('p').textContent = '开放端口';
+        document.querySelector('#open-ports-count').parentElement.querySelector('p').textContent = isFinScan ? '开放|过滤端口' : '开放端口';
         document.querySelector('#filtered-ports-count').parentElement.querySelector('p').textContent = '过滤端口';
         document.querySelector('#closed-ports-count').parentElement.querySelector('p').textContent = '关闭端口';
         document.querySelector('#total-ports-count').parentElement.querySelector('p').textContent = '总扫描端口';
@@ -1686,10 +1701,14 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
 if (portChartInstance) {
     portChartInstance.destroy();
 }
+
+// 根据扫描类型调整图表标签
+const chartLabels = isFinScan ? ['开放|过滤', '过滤', '关闭'] : ['开放', '过滤', '关闭'];
+
 portChartInstance = new Chart(ctx, {
     type: 'doughnut',
     data: {
-        labels: ['开放', '过滤', '关闭'],
+        labels: chartLabels,
         datasets: [{
             data: [
                 scanResults.openPorts.length,
@@ -1725,7 +1744,7 @@ portChartInstance = new Chart(ctx, {
     if (scanResults.openPorts.length === 0) {
         openPortsTable.innerHTML = `
             <tr>
-                <td colspan="5" class="px-6 py-4 text-center text-gray-500">暂无开放端口</td>
+                <td colspan="5" class="px-6 py-4 text-center text-gray-500">暂无${isFinScan ? '开放|过滤' : '开放'}端口</td>
             </tr>
         `;
     } else {
@@ -1736,6 +1755,10 @@ portChartInstance = new Chart(ctx, {
             const service = predictService(port);
             const riskLevel = getServiceRiskLevel(port, service);
             const riskStyle = getRiskLevelStyle(riskLevel);
+            
+            // 根据扫描类型确定状态显示
+            const statusText = isFinScan ? '开放|过滤' : '开放';
+            const statusStyle = isFinScan ? 'bg-warning/20 text-warning' : 'bg-success/20 text-success';
             
             const row = document.createElement('tr');
             row.innerHTML = `
@@ -1752,18 +1775,27 @@ portChartInstance = new Chart(ctx, {
                     <div class="text-sm text-gray-900">unknown</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="px-2 py-1 text-xs font-medium ${riskStyle} rounded-full">${riskLevel}</span>
+                    <span class="px-2 py-1 text-xs font-medium ${statusStyle} rounded-full">${statusText}</span>
                 </td>
             `;
             openPortsTable.appendChild(row);
         });
     }
     
+    // 更新表格标题
+    const tableTitle = document.querySelector('h4.text-lg.font-semibold.text-dark.mb-4');
+    if (isFinScan) {
+        tableTitle.textContent = '开放|过滤端口详情';
+    } else {
+        tableTitle.textContent = '开放端口详情';
+    }
+    
     // 添加到历史记录
     addToHistory(currentTarget, currentScanType, currentPortRange);
     
     // 显示成功提示
-    showSuccess('端口扫描完成');
+    const successMessage = isFinScan ? 'FIN扫描完成' : '端口扫描完成';
+    showSuccess(successMessage);
 };
 
     try {
@@ -1832,6 +1864,12 @@ portChartInstance = new Chart(ctx, {
         // 清理资源
         clearInterval(timerInterval);
         scanInProgress = false;
+        
+        // 显示扫描完成状态
+        document.getElementById('scan-progress-bar').style.width = '100%';
+        document.getElementById('scan-progress-text').textContent = '扫描完成';
+        
+        // 恢复按钮状态
         scanButton.disabled = false;
         scanButton.innerHTML = '<i class="fa fa-play-circle mr-2"></i><span>开始扫描</span>';
     }
@@ -1842,41 +1880,19 @@ if (exportButton) {
     exportButton.addEventListener('click', exportScanResults);
 }
             
-            // 更新扫描进度
-            const updateProgress = function() {
-                scannedPorts = Math.min(totalPorts, scannedPorts + 1);
-                const progress = Math.min(100, Math.floor((scannedPorts / totalPorts) * 100));
-                
-                // 更新进度条
-                document.getElementById('scan-progress-bar').style.width = `${progress}%`;
-                document.getElementById('scan-progress-text').textContent = `${progress}%`;
-                
-                // 更新扫描速度和时间
-                const currentTime = new Date();
-                const elapsedTime = (currentTime - startTime) / 1000; // 秒
-                const scanSpeed = Math.max(1, Math.floor(scannedPorts / elapsedTime));
-                
-                document.getElementById('scan-speed').textContent = `${scanSpeed} 端口/秒`;
-                
-                // 格式化时间显示
-                const hours = Math.floor(elapsedTime / 3600);
-                const minutes = Math.floor((elapsedTime % 3600) / 60);
-                const seconds = Math.floor(elapsedTime % 60);
-                
-                document.getElementById('scan-time').textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                
-                // 扫描完成
-                if (progress >= 100) {
-    clearInterval(timerInterval);
-    // 不再在这里处理按钮和结果展示，全部交给主流程 finally 和 processScanResults
-}
-            };
+
             
             // 取消扫描
             document.getElementById('cancel-scan').addEventListener('click', function() {
                  if (scanInProgress) {
         clearInterval(timerInterval);
         scanInProgress = false;
+        
+        // 显示扫描取消状态
+        document.getElementById('scan-progress-bar').style.width = '0%';
+        document.getElementById('scan-progress-text').textContent = '扫描已取消';
+        document.getElementById('scan-speed').textContent = '已停止';
+        
         document.getElementById('scan-status').classList.add('hidden');
         document.getElementById('no-results').classList.remove('hidden');
         
@@ -1929,6 +1945,25 @@ if (exportButton) {
             // 添加到表格顶部
             historyTable.insertBefore(row, historyTable.firstChild);
         }
+
+        // 更新扫描时间
+        const updateScanTime = function() {
+            const currentTime = new Date();
+            const elapsedTime = (currentTime - startTime) / 1000; // 秒
+            
+            // 格式化时间显示
+            const hours = Math.floor(elapsedTime / 3600);
+            const minutes = Math.floor((elapsedTime % 3600) / 60);
+            const seconds = Math.floor(elapsedTime % 60);
+            
+            document.getElementById('scan-time').textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            // 更新扫描速度（基于总端口数和已用时间）
+            if (elapsedTime > 0) {
+                const estimatedSpeed = Math.floor(totalPorts / elapsedTime);
+                document.getElementById('scan-speed').textContent = `约 ${estimatedSpeed} 端口/秒`;
+            }
+        };
     </script>
 </body>
 </html>

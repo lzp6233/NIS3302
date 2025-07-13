@@ -27,6 +27,9 @@
 #include <string.h>
 #include <random>
 
+// 前向声明
+std::vector<int> tcpConnectScanJson(const std::string& ip, const std::vector<int>& ports);
+
 // 全局随机数生成器，提高随机性
 std::random_device rd;
 std::mt19937 gen(rd());
@@ -320,30 +323,8 @@ void ScanCommonPorts(std::string hostNameArg) {
 
 
 std::string get_default_iface() {
-    struct ifaddrs *ifap, *ifa;
-    struct sockaddr_in *sa;
-    char addr[INET_ADDRSTRLEN];
-    std::string iface;
-
-    if (getifaddrs(&ifap) == -1) {
-        perror("getifaddrs");
-        return "";
-    }
-
-    for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
-            sa = (struct sockaddr_in *)ifa->ifa_addr;
-            inet_ntop(AF_INET, &sa->sin_addr, addr, INET_ADDRSTRLEN);
-            // 排除回环地址（127.0.0.1），取第一个非回环的接口
-            if (strcmp(addr, "127.0.0.1") != 0) {
-                iface = ifa->ifa_name;
-                break;
-            }
-        }
-    }
-
-    freeifaddrs(ifap);
-    return iface;
+    // WSL2环境下强制使用eth0接口
+    return "eth0";
 }
 
 // 优化的TCP SYN/FIN扫描实现
@@ -455,6 +436,14 @@ void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
 // 优化的多端口SYN扫描，返回开放端口列表
 std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports) {
     std::vector<int> openPorts;
+    
+    // 检查是否以root权限运行
+    if (geteuid() != 0) {
+        std::cerr << "警告: TCP SYN扫描需要root权限，降级为TCP Connect扫描" << std::endl;
+        // 降级为TCP Connect扫描
+        return tcpConnectScanJson(ip, ports);
+    }
+    
     std::mutex resultMutex;
     std::mutex libnetMutex; // 添加libnet互斥锁
     
@@ -463,26 +452,31 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
     libnet_t *l = libnet_init(LIBNET_RAW4, nullptr, errbuf);
     if (!l) {
         std::cerr << "libnet_init() failed: " << errbuf << std::endl;
-        return openPorts;
+        std::cerr << "降级为TCP Connect扫描" << std::endl;
+        return tcpConnectScanJson(ip, ports);
     }
     
     char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
     std::string iface = get_default_iface();
     if (iface.empty()) {
         std::cerr << "Failed to get default interface" << std::endl;
+        std::cerr << "降级为TCP Connect扫描" << std::endl;
         libnet_destroy(l);
-        return openPorts;
+        return tcpConnectScanJson(ip, ports);
     }
+    
+    std::cout << "使用网络接口: " << iface << std::endl;
     
     pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 1000, pcap_errbuf); // 减少超时时间
     if (!handle) {
         std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
+        std::cerr << "降级为TCP Connect扫描" << std::endl;
         libnet_destroy(l);
-        return openPorts;
+        return tcpConnectScanJson(ip, ports);
     }
     
     // 使用线程池进行并发扫描
-    const int max_threads = 200;
+    const int max_threads = 50; // 减少线程数，避免资源竞争
     std::vector<std::thread> threads;
     
     auto scanPort = [&](int port) {
@@ -494,6 +488,11 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
         
         uint32_t src_ip = libnet_get_ipaddr4(l);
         uint32_t dst_ip = libnet_name2addr4(l, const_cast<char*>(ip.c_str()), LIBNET_RESOLVE);
+        
+        if (dst_ip == 0) {
+            std::cerr << "无法解析目标IP: " << ip << std::endl;
+            return;
+        }
         
         // 构建TCP SYN包
         libnet_ptag_t tcp_tag = libnet_build_tcp(
@@ -505,38 +504,66 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
             src_ip, dst_ip, nullptr, 0, l, 0
         );
         
-        if (tcp_tag == -1 || ip_tag == -1) return;
+        if (tcp_tag == -1 || ip_tag == -1) {
+            std::cerr << "构建数据包失败，端口: " << port << std::endl;
+            return;
+        }
         
         // 发送包
-        if (libnet_write(l) < 0) return;
+        if (libnet_write(l) < 0) {
+            std::cerr << "发送数据包失败，端口: " << port << std::endl;
+            return;
+        }
         
         // 设置pcap过滤器
         std::string filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
         struct bpf_program fp;
         if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
             pcap_setfilter(handle, &fp) == -1) {
+            std::cerr << "设置pcap过滤器失败，端口: " << port << std::endl;
             return;
         }
         
-        // 等待响应
+        // 等待响应，添加超时机制
         struct pcap_pkthdr* header;
         const u_char* pkt_data;
-        int res = pcap_next_ex(handle, &header, &pkt_data);
         
-        if (res == 1) {
-            // 解析响应包 - 添加边界检查
-            if (header->len >= 14 + sizeof(struct ip)) {
-                const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
-                if (header->len >= 14 + ip_hdr->ip_hl * 4 + sizeof(struct tcphdr)) {
-                    const struct tcphdr* tcp_hdr = (struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
-                    
-                    // 检查是否为SYN+ACK响应
-                    if ((tcp_hdr->th_flags & TH_SYN) && (tcp_hdr->th_flags & TH_ACK)) {
-                        std::lock_guard<std::mutex> lock(resultMutex);
-                        openPorts.push_back(port);
+        // 设置更短的超时时间，避免卡住
+        struct timeval timeout;
+        timeout.tv_sec = 1;  // 1秒超时
+        timeout.tv_usec = 0;
+        
+        // 使用select进行超时控制
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(pcap_get_selectable_fd(handle), &readfds);
+        
+        int select_result = select(pcap_get_selectable_fd(handle) + 1, &readfds, NULL, NULL, &timeout);
+        
+        if (select_result > 0 && FD_ISSET(pcap_get_selectable_fd(handle), &readfds)) {
+            int res = pcap_next_ex(handle, &header, &pkt_data);
+            
+            if (res == 1) {
+                // 解析响应包 - 添加边界检查
+                if (header->len >= 14 + sizeof(struct ip)) {
+                    const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
+                    if (header->len >= 14 + ip_hdr->ip_hl * 4 + sizeof(struct tcphdr)) {
+                        const struct tcphdr* tcp_hdr = (struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
+                        
+                        // 检查是否为SYN+ACK响应
+                        if ((tcp_hdr->th_flags & TH_SYN) && (tcp_hdr->th_flags & TH_ACK)) {
+                            std::lock_guard<std::mutex> lock(resultMutex);
+                            openPorts.push_back(port);
+                            std::cout << "发现开放端口: " << port << " (SYN+ACK)" << std::endl;
+                        } else if (tcp_hdr->th_flags & TH_RST) {
+                            std::cout << "端口 " << port << " 关闭 (RST)" << std::endl;
+                        }
                     }
                 }
             }
+        } else {
+            // 超时或没有响应，认为端口被过滤或关闭
+            std::cout << "端口 " << port << " 无响应 (超时)" << std::endl;
         }
         
         // 清理当前包，准备下一个
@@ -548,12 +575,19 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
         threads.clear();
         size_t end = std::min(i + max_threads, ports.size());
         
+        std::cout << "扫描端口 " << i + 1 << " 到 " << end << " (共 " << ports.size() << " 个)" << std::endl;
+        
         for (size_t j = i; j < end; j++) {
             threads.emplace_back(scanPort, ports[j]);
         }
         
         for (auto& thread : threads) {
             thread.join();
+        }
+        
+        // 在批次之间添加短暂延迟
+        if (end < ports.size()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
     
@@ -562,12 +596,67 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
     libnet_destroy(l);
     
     std::sort(openPorts.begin(), openPorts.end());
+    std::cout << "SYN扫描完成，发现 " << openPorts.size() << " 个开放端口" << std::endl;
+    return openPorts;
+}
+
+// 新增：TCP Connect扫描的JSON版本
+std::vector<int> tcpConnectScanJson(const std::string& ip, const std::vector<int>& ports) {
+    std::vector<int> openPorts;
+    std::mutex resultMutex;
+    
+    std::cout << "使用TCP Connect扫描模式" << std::endl;
+    
+    // 使用线程池进行并发扫描
+    const int max_threads = 100;
+    std::vector<std::thread> threads;
+    
+    auto scanPort = [&](int port) {
+        if (TestPortConnection(ip, port)) {
+            std::lock_guard<std::mutex> lock(resultMutex);
+            openPorts.push_back(port);
+            std::cout << "发现开放端口: " << port << " (Connect)" << std::endl;
+        }
+    };
+    
+    // 分批处理端口
+    for (size_t i = 0; i < ports.size(); i += max_threads) {
+        threads.clear();
+        size_t end = std::min(i + max_threads, ports.size());
+        
+        std::cout << "扫描端口 " << i + 1 << " 到 " << end << " (共 " << ports.size() << " 个)" << std::endl;
+        
+        for (size_t j = i; j < end; j++) {
+            threads.emplace_back(scanPort, ports[j]);
+        }
+        
+        for (auto& thread : threads) {
+            thread.join();
+        }
+        
+        // 在批次之间添加短暂延迟
+        if (end < ports.size()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+    
+    std::sort(openPorts.begin(), openPorts.end());
+    std::cout << "Connect扫描完成，发现 " << openPorts.size() << " 个开放端口" << std::endl;
     return openPorts;
 }
 
 // 优化的多端口FIN扫描，返回开放端口列表
 std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& ports) {
     std::vector<int> openPorts;
+    std::vector<int> filteredPorts; // 新增：被过滤的端口列表
+    
+    // 检查是否以root权限运行
+    if (geteuid() != 0) {
+        std::cerr << "警告: TCP FIN扫描需要root权限，降级为TCP Connect扫描" << std::endl;
+        // 降级为TCP Connect扫描
+        return tcpConnectScanJson(ip, ports);
+    }
+    
     std::mutex resultMutex;
     std::mutex libnetMutex; // 添加libnet互斥锁
     
@@ -576,26 +665,31 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
     libnet_t *l = libnet_init(LIBNET_RAW4, nullptr, errbuf);
     if (!l) {
         std::cerr << "libnet_init() failed: " << errbuf << std::endl;
-        return openPorts;
+        std::cerr << "降级为TCP Connect扫描" << std::endl;
+        return tcpConnectScanJson(ip, ports);
     }
     
     char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
     std::string iface = get_default_iface();
     if (iface.empty()) {
         std::cerr << "Failed to get default interface" << std::endl;
+        std::cerr << "降级为TCP Connect扫描" << std::endl;
         libnet_destroy(l);
-        return openPorts;
+        return tcpConnectScanJson(ip, ports);
     }
+    
+    std::cout << "使用网络接口: " << iface << std::endl;
     
     pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 1500, pcap_errbuf); // 适当增加超时时间
     if (!handle) {
         std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
+        std::cerr << "降级为TCP Connect扫描" << std::endl;
         libnet_destroy(l);
-        return openPorts;
+        return tcpConnectScanJson(ip, ports);
     }
     
     // 使用线程池进行并发扫描
-    const int max_threads = 150; // FIN扫描使用较少的线程，因为需要等待响应
+    const int max_threads = 50; // FIN扫描使用较少的线程，因为需要等待响应
     std::vector<std::thread> threads;
     
     auto scanPort = [&](int port) {
@@ -608,6 +702,11 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
         uint32_t src_ip = libnet_get_ipaddr4(l);
         uint32_t dst_ip = libnet_name2addr4(l, const_cast<char*>(ip.c_str()), LIBNET_RESOLVE);
         
+        if (dst_ip == 0) {
+            std::cerr << "无法解析目标IP: " << ip << std::endl;
+            return;
+        }
+        
         // 构建TCP FIN包
         libnet_ptag_t tcp_tag = libnet_build_tcp(
             src_port, port, dis(gen), dis(gen), TH_FIN, 32767, 0, 0, LIBNET_TCP_H, nullptr, 0, l, 0
@@ -618,43 +717,71 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
             src_ip, dst_ip, nullptr, 0, l, 0
         );
         
-        if (tcp_tag == -1 || ip_tag == -1) return;
+        if (tcp_tag == -1 || ip_tag == -1) {
+            std::cerr << "构建数据包失败，端口: " << port << std::endl;
+            return;
+        }
         
         // 发送包
-        if (libnet_write(l) < 0) return;
+        if (libnet_write(l) < 0) {
+            std::cerr << "发送数据包失败，端口: " << port << std::endl;
+            return;
+        }
         
         // 设置pcap过滤器
         std::string filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
         struct bpf_program fp;
         if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
             pcap_setfilter(handle, &fp) == -1) {
+            std::cerr << "设置pcap过滤器失败，端口: " << port << std::endl;
             return;
         }
         
-        // 等待响应
+        // 等待响应，添加超时机制
         struct pcap_pkthdr* header;
         const u_char* pkt_data;
-        int res = pcap_next_ex(handle, &header, &pkt_data);
         
-        // FIN扫描逻辑：无响应或收到RST表示端口关闭，收到其他响应表示端口开放
-        if (res != 1) {
-            // 无响应，认为端口开放或被过滤
-            std::lock_guard<std::mutex> lock(resultMutex);
-            openPorts.push_back(port);
-        } else {
-            // 有响应，检查是否为RST - 添加边界检查
-            if (header->len >= 14 + sizeof(struct ip)) {
-                const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
-                if (header->len >= 14 + ip_hdr->ip_hl * 4 + sizeof(struct tcphdr)) {
-                    const struct tcphdr* tcp_hdr = (struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
-                    
-                    // 如果不是RST包，则认为端口开放
-                    if (!(tcp_hdr->th_flags & TH_RST)) {
-                        std::lock_guard<std::mutex> lock(resultMutex);
-                        openPorts.push_back(port);
+        // 设置更短的超时时间，避免卡住
+        struct timeval timeout;
+        timeout.tv_sec = 1;  // 1秒超时
+        timeout.tv_usec = 0;
+        
+        // 使用select进行超时控制
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(pcap_get_selectable_fd(handle), &readfds);
+        
+        int select_result = select(pcap_get_selectable_fd(handle) + 1, &readfds, NULL, NULL, &timeout);
+        
+        if (select_result > 0 && FD_ISSET(pcap_get_selectable_fd(handle), &readfds)) {
+            int res = pcap_next_ex(handle, &header, &pkt_data);
+            
+            if (res == 1) {
+                // 有响应，检查是否为RST - 添加边界检查
+                if (header->len >= 14 + sizeof(struct ip)) {
+                    const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
+                    if (header->len >= 14 + ip_hdr->ip_hl * 4 + sizeof(struct tcphdr)) {
+                        const struct tcphdr* tcp_hdr = (struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
+                        
+                        // 检查是否为RST包
+                        if (tcp_hdr->th_flags & TH_RST) {
+                            std::cout << "端口 " << port << " 关闭 (FIN RST)" << std::endl;
+                        } else {
+                            // 收到非RST响应，可能是开放端口
+                            std::lock_guard<std::mutex> lock(resultMutex);
+                            openPorts.push_back(port);
+                            std::cout << "端口 " << port << " 开放 (FIN非RST响应)" << std::endl;
+                        }
                     }
                 }
             }
+        } else {
+            // 超时或没有响应，可能是开放或被过滤
+            // 根据RFC 793，开放端口应该忽略FIN包，所以无响应可能表示开放
+            // 但防火墙也可能过滤FIN包，所以标记为"开放|过滤"
+            std::lock_guard<std::mutex> lock(resultMutex);
+            openPorts.push_back(port);
+            std::cout << "端口 " << port << " 开放|过滤 (FIN无响应)" << std::endl;
         }
         
         // 清理当前包，准备下一个
@@ -666,12 +793,19 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
         threads.clear();
         size_t end = std::min(i + max_threads, ports.size());
         
+        std::cout << "扫描端口 " << i + 1 << " 到 " << end << " (共 " << ports.size() << " 个)" << std::endl;
+        
         for (size_t j = i; j < end; j++) {
             threads.emplace_back(scanPort, ports[j]);
         }
         
         for (auto& thread : threads) {
             thread.join();
+        }
+        
+        // 在批次之间添加短暂延迟
+        if (end < ports.size()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
     
@@ -680,6 +814,7 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
     libnet_destroy(l);
     
     std::sort(openPorts.begin(), openPorts.end());
+    std::cout << "FIN扫描完成，发现 " << openPorts.size() << " 个开放|过滤端口" << std::endl;
     return openPorts;
 }
 
@@ -732,3 +867,4 @@ void UDPScan(const std::string& ip, int option) {
         close(sock);
     }
 }
+

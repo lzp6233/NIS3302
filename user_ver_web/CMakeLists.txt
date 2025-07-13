@@ -76,11 +76,17 @@ endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PCAP REQUIRED libpcap)
 
+# 直接查找libnet库文件，不使用pkg-config
+find_library(LIBNET_LIBRARY NAMES net libnet)
+if(NOT LIBNET_LIBRARY)
+    message(FATAL_ERROR "libnet library not found")
+endif()
+
 include_directories(${PCAP_INCLUDE_DIRS})
 link_directories(${PCAP_LIBRARY_DIRS})
 add_definitions(${PCAP_CFLAGS_OTHER})
 
-target_link_libraries(portScan PRIVATE ${PCAP_LIBRARIES} net)
+target_link_libraries(portScan PRIVATE ${PCAP_LIBRARIES} ${LIBNET_LIBRARY} net)
 
 # 特殊处理Windows上的pcap路径
 if(WIN32)

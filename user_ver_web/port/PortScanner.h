@@ -32,6 +32,8 @@ void ScanCommonPorts(std::string hostNameArg);
 std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports);
 // 新实现：多端口FIN扫描，返回开放端口列表
 std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& ports);
+// 新增：TCP Connect扫描的JSON版本
+std::vector<int> tcpConnectScanJson(const std::string& ip, const std::vector<int>& ports);
 // UDP扫描
 void UDPScan(const std::string& ip, int option);
 
