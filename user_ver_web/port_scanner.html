@@ -1325,11 +1325,9 @@ function generateExportData(results) {
         const header = '端口,状态,服务,版本,风险等级';
         // 数据行
         const rows = results.openPorts.map(port => {
-            // 假设每个端口对象包含 port、status、service、version、riskLevel
-            // 实际需根据后端返回的字段调整
-            const portData = port || {};
-            return `${portData.port || 'N/A'},${portData.status || '开放'},${portData.service || 'unknown'},${portData.version || 'unknown'},${portData.riskLevel || 'INFO'}`;
+            return `${port},TCP,开放,unknown,INFO`;  // 确保与表格显示一致
         });
+        
         return [header, ...rows].join('\n');
     } 
     // 无开放端口
