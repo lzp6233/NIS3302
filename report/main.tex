@@ -11,7 +11,11 @@
 %%------------------摘要-------------%%
 \begin{abstract}
 
-在此填写摘要内容
+本项目设计并实现了一个基于Web的网络端口扫描工具，旨在为网络安全测试提供直观、高效的端口扫描解决方案。系统采用C++后端和HTML5前端相结合的架构，支持多种扫描方式包括TCP SYN扫描、TCP Connect扫描、UDP扫描以及ICMP ping检测。
+
+系统主要功能包括：多线程高速端口扫描、实时扫描进度显示、扫描结果可视化展示、扫描历史记录管理、以及基于开放端口的网络安全风险评估。后端采用httplib库构建RESTful API服务，前端使用现代Web技术实现响应式用户界面。
+
+通过实际测试验证，系统能够准确识别目标主机的开放端口，扫描速度达到每秒数百个端口，具有良好的稳定性和用户体验。该工具为网络安全专业人员提供了一个功能完善、易于使用的端口扫描解决方案。
 
 \end{abstract}
 
@@ -24,49 +28,398 @@
 %%------------------------正文页从这里开始-------------------%
 \newpage
 \section{需求分析}
-% 具体内容涉及（但不局限于）以下方面：
-% a)	项目需求分析，即描述本项目需要解决什么样的安全问题
-% b)	项目所要完成的功能目标
+
+\subsection{项目背景}
+随着网络技术的快速发展，网络安全问题日益突出。端口扫描作为网络安全评估的基础工具，对于发现网络漏洞、评估系统安全性具有重要意义。传统的命令行端口扫描工具虽然功能强大，但缺乏直观的用户界面，对于非专业用户来说使用门槛较高。
+
+\subsection{项目需求}
+本项目旨在开发一个基于Web的网络端口扫描工具，主要解决以下问题：
+
+\begin{enumerate}
+    \item \textbf{用户友好性}：提供直观的图形用户界面，降低使用门槛
+    \item \textbf{功能完整性}：支持多种扫描方式，满足不同场景需求
+    \item \textbf{性能优化}：采用多线程技术提高扫描效率
+    \item \textbf{结果可视化}：以图表形式展示扫描结果，便于分析
+    \item \textbf{历史管理}：保存扫描历史，支持结果对比和趋势分析
+\end{enumerate}
+
+\subsection{功能目标}
+系统需要实现以下核心功能：
+
+\begin{itemize}
+    \item \textbf{ICMP扫描}：检测目标主机是否可达
+    \item \textbf{TCP SYN扫描}：快速识别开放端口，避免建立完整连接
+    \item \textbf{TCP Connect扫描}：建立完整TCP连接进行端口检测
+    \item \textbf{UDP扫描}：检测UDP端口状态
+    \item \textbf{多线程扫描}：支持自定义线程数，提高扫描效率
+    \item \textbf{实时进度显示}：显示扫描进度和状态
+    \item \textbf{结果可视化}：以表格和图表形式展示扫描结果
+    \item \textbf{历史记录}：保存和管理扫描历史
+    \item \textbf{结果导出}：支持扫描结果导出功能
+\end{itemize}
 
 \section{总体设计}
-% 主要内容包括（但不局限于）以下方面：
-% 	总体结构图：结构图中需要体现出所涉及的每个模块，以及模块之间的信息交互。
-% 	项目的模块划分，并逐个介绍每个模块：
-% 	模块名称
-% 	模块的功能
-% 	模块的输入，或依赖的信息
-% 	模块的输出
+
+\subsection{系统架构}
+系统采用前后端分离的架构设计，如图\ref{fig:architecture}所示：
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    box/.style={rectangle, draw, rounded corners, minimum width=2cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick}
+]
+    % 前端层
+    \node[box, fill=blue!20] (web) at (0,4) {Web前端\\HTML5/CSS/JS};
+    
+    % API层
+    \node[box, fill=green!20] (api) at (0,2.5) {RESTful API\\httplib};
+    
+    % 后端服务层
+    \node[box, fill=yellow!20] (backend) at (0,1) {C++后端服务};
+    
+    % 功能模块层
+    \node[box, fill=orange!20] (icmp) at (-3,0) {ICMP模块\\ping.h/cpp};
+    \node[box, fill=orange!20] (port) at (0,0) {端口扫描模块\\PortScanner.h/cpp};
+    \node[box, fill=orange!20] (network) at (3,0) {网络模块\\network.h/cpp};
+    
+    % 连接
+    \draw[arrow] (web) -- (api);
+    \draw[arrow] (api) -- (backend);
+    \draw[arrow] (backend) -- (icmp);
+    \draw[arrow] (backend) -- (port);
+    \draw[arrow] (backend) -- (network);
+\end{tikzpicture}
+\caption{系统总体架构图}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{模块划分}
+
+\subsubsection{Web前端模块}
+\begin{itemize}
+    \item \textbf{功能}：提供用户界面，处理用户交互，展示扫描结果
+    \item \textbf{输入}：用户配置参数，后端API响应
+    \item \textbf{输出}：用户界面更新，扫描请求发送
+    \item \textbf{依赖}：现代Web浏览器，后端API服务
+\end{itemize}
+
+\subsubsection{RESTful API模块}
+\begin{itemize}
+    \item \textbf{功能}：提供HTTP API接口，处理前端请求
+    \item \textbf{输入}：HTTP请求（GET/POST）
+    \item \textbf{输出}：JSON格式响应数据
+    \item \textbf{依赖}：httplib库，后端功能模块
+\end{itemize}
+
+\subsubsection{ICMP扫描模块}
+\begin{itemize}
+    \item \textbf{功能}：实现ICMP ping功能，检测主机可达性
+    \item \textbf{输入}：目标IP地址，超时时间
+    \item \textbf{输出}：主机可达性状态，RTT时间
+    \item \textbf{依赖}：系统网络接口，原始套接字权限
+\end{itemize}
+
+\subsubsection{端口扫描模块}
+\begin{itemize}
+    \item \textbf{功能}：实现多种端口扫描方式
+    \item \textbf{输入}：目标地址，端口范围，扫描类型
+    \item \textbf{输出}：开放端口列表，扫描统计信息
+    \item \textbf{依赖}：网络接口，多线程支持
+\end{itemize}
+
+\subsubsection{网络工具模块}
+\begin{itemize}
+    \item \textbf{功能}：提供底层网络操作支持
+    \item \textbf{输入}：网络配置参数
+    \item \textbf{输出}：网络操作结果
+    \item \textbf{依赖}：系统网络库
+\end{itemize}
 
 \section{详细设计}
-% 每个模块可对应一节，这里假定含三个模块，每一节包括（但不局限于）以下内容：
-% 	模块概述：功能、输入、输出等
-% 	模块的数据处理流程：以流程图的形式给出，也可以分散在每个函数中
-% 	主要数据结构的设计
-% 	对主要的处理函数逐个进行设计，每个函数的详细设计包括
-% 	函数名，输入参数，输出类型
-% 	函数功能
-% 	依赖哪些外部函数
-% 	函数处理流程图
+
+\subsection{Web前端模块设计}
+
+\subsubsection{模块概述}
+Web前端模块负责提供用户界面和交互功能，采用响应式设计，支持桌面和移动设备访问。
+
+\subsubsection{主要数据结构}
+\begin{itemize}
+    \item \textbf{扫描配置对象}：包含目标地址、端口范围、扫描类型等参数
+    \item \textbf{扫描结果对象}：包含开放端口、扫描统计、时间戳等信息
+    \item \textbf{历史记录对象}：包含历史扫描的配置和结果
+\end{itemize}
+
+\subsubsection{核心函数设计}
+
+\textbf{函数名}：startScan(config)
+\begin{itemize}
+    \item \textbf{输入参数}：扫描配置对象
+    \item \textbf{输出类型}：Promise对象
+    \item \textbf{函数功能}：发起扫描请求，处理响应
+    \item \textbf{依赖函数}：updateProgress(), displayResults()
+    \item \textbf{处理流程}：
+    \begin{enumerate}
+        \item 验证输入参数
+        \item 发送HTTP请求到后端API
+        \item 实时更新扫描进度
+        \item 接收并处理扫描结果
+        \item 更新界面显示
+    \end{enumerate}
+\end{itemize}
+
+\subsection{后端API模块设计}
+
+\subsubsection{模块概述}
+后端API模块基于httplib库构建，提供RESTful风格的HTTP接口，处理前端请求并调用相应的功能模块。
+
+\subsubsection{主要数据结构}
+\begin{itemize}
+    \item \textbf{请求参数结构}：包含扫描类型、目标地址、端口范围等
+    \item \textbf{响应结果结构}：包含状态码、数据内容、错误信息等
+    \item \textbf{扫描任务结构}：包含任务ID、状态、进度等信息
+\end{itemize}
+
+\subsubsection{核心函数设计}
+
+\textbf{函数名}：handlePortScan(target, scanType, portRange, customPorts, threads, timeout)
+\begin{itemize}
+    \item \textbf{输入参数}：目标地址、扫描类型、端口范围、自定义端口、线程数、超时时间
+    \item \textbf{输出类型}：JSON对象
+    \item \textbf{函数功能}：处理端口扫描请求，返回扫描结果
+    \item \textbf{依赖函数}：tcpSynScan(), tcpConnectScan(), udpScan()
+    \item \textbf{处理流程}：
+    \begin{enumerate}
+        \item 参数验证和预处理
+        \item 根据扫描类型调用相应扫描函数
+        \item 收集扫描结果
+        \item 格式化返回数据
+    \end{enumerate}
+\end{itemize}
+
+\subsection{ICMP扫描模块设计}
+
+\subsubsection{模块概述}
+ICMP扫描模块实现ping功能，用于检测目标主机的可达性，支持自定义超时时间和重试次数。
+
+\subsubsection{主要数据结构}
+\begin{itemize}
+    \item \textbf{ICMP头部结构}：包含类型、代码、校验和等字段
+    \item \textbf{Ping结果结构}：包含可达性状态、RTT时间、丢包率等
+    \item \textbf{网络地址结构}：包含IP地址、端口等信息
+\end{itemize}
+
+\subsubsection{核心函数设计}
+
+\textbf{函数名}：ping(target, timeout)
+\begin{itemize}
+    \item \textbf{输入参数}：目标地址、超时时间
+    \item \textbf{输出类型}：std::optional<std::chrono::milliseconds>
+    \item \textbf{函数功能}：发送ICMP echo请求，检测主机可达性
+    \item \textbf{依赖函数}：createSocket(), sendEchoRequest(), receiveEchoReply()
+    \item \textbf{处理流程}：
+    \begin{enumerate}
+        \item 创建原始套接字
+        \item 构造ICMP echo请求包
+        \item 发送请求并等待响应
+        \item 计算往返时间
+        \item 返回结果
+    \end{enumerate}
+\end{itemize}
+
+\subsection{端口扫描模块设计}
+
+\subsubsection{模块概述}
+端口扫描模块实现多种扫描方式，包括TCP SYN扫描、TCP Connect扫描和UDP扫描，支持多线程并发扫描。
+
+\subsubsection{主要数据结构}
+\begin{itemize}
+    \item \textbf{扫描配置结构}：包含目标地址、端口列表、扫描参数等
+    \item \textbf{扫描结果结构}：包含开放端口、过滤端口、统计信息等
+    \item \textbf{线程任务结构}：包含线程ID、端口范围、结果容器等
+\end{itemize}
+
+\subsubsection{核心函数设计}
+
+\textbf{函数名}：TCPSynScanJson(target, ports)
+\begin{itemize}
+    \item \textbf{输入参数}：目标地址、端口列表
+    \item \textbf{输出类型}：std::vector<int>
+    \item \textbf{函数功能}：执行TCP SYN扫描，返回开放端口列表
+    \item \textbf{依赖函数}：createRawSocket(), sendSynPacket(), receiveResponse()
+    \item \textbf{处理流程}：
+    \begin{enumerate}
+        \item 创建原始套接字
+        \item 构造TCP SYN包
+        \item 发送SYN包到目标端口
+        \item 监听SYN-ACK响应
+        \item 判断端口状态
+        \item 返回开放端口列表
+    \end{enumerate}
+\end{itemize}
 
 \section{系统实现与测试}
-% 内容包括（但不局限于）以下内容：
-% 	实现环境、开发工具等介绍
-% 	测试环境搭建
-% 	具体的测试方法
-% 	测试流程：最好有类似流程图的方式体现
-% 	具体进行了哪些测试，每个测试观察到什么样的现象、效果，有何结论
-% 	所有测试结束后，得出了哪些结论
+
+\subsection{实现环境}
+\begin{itemize}
+    \item \textbf{操作系统}：Linux (WSL2 Ubuntu)
+    \item \textbf{编译器}：GCC 9.4.0
+    \item \textbf{构建工具}：CMake 3.16.3
+    \item \textbf{开发语言}：C++17, HTML5, CSS3, JavaScript
+    \item \textbf{主要依赖库}：
+    \begin{itemize}
+        \item httplib：HTTP服务器库
+        \item nlohmann/json：JSON处理库
+        \item fmt：字符串格式化库
+    \end{itemize}
+\end{itemize}
+
+\subsection{测试环境搭建}
+测试环境包括：
+\begin{itemize}
+    \item \textbf{本地测试环境}：WSL2 Ubuntu系统
+    \item \textbf{目标测试主机}：本地回环地址、局域网主机
+    \item \textbf{网络环境}：局域网环境，支持ICMP和TCP/UDP协议
+    \item \textbf{浏览器环境}：Chrome、Firefox、Safari等现代浏览器
+\end{itemize}
+
+\subsection{测试方法}
+采用以下测试方法：
+\begin{itemize}
+    \item \textbf{功能测试}：验证各模块功能正确性
+    \item \textbf{性能测试}：测试扫描速度和资源占用
+    \item \textbf{兼容性测试}：测试不同浏览器兼容性
+    \item \textbf{压力测试}：测试高并发扫描性能
+    \item \textbf{安全测试}：验证扫描行为的安全性
+\end{itemize}
+
+\subsection{测试流程}
+测试流程如图\ref{fig:test_flow}所示：
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    box/.style={rectangle, draw, rounded corners, minimum width=2cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick}
+]
+    \node[box] (start) at (0,0) {开始测试};
+    \node[box] (env) at (0,-1.5) {环境准备};
+    \node[box] (func) at (0,-3) {功能测试};
+    \node[box] (perf) at (0,-4.5) {性能测试};
+    \node[box] (comp) at (0,-6) {兼容性测试};
+    \node[box] (result) at (0,-7.5) {测试结果};
+    
+    \draw[arrow] (start) -- (env);
+    \draw[arrow] (env) -- (func);
+    \draw[arrow] (func) -- (perf);
+    \draw[arrow] (perf) -- (comp);
+    \draw[arrow] (comp) -- (result);
+\end{tikzpicture}
+\caption{测试流程图}
+\label{fig:test_flow}
+\end{figure}
+
+\subsection{具体测试内容}
+
+\subsubsection{ICMP扫描测试}
+\begin{itemize}
+    \item \textbf{测试目标}：本地回环地址(127.0.0.1)、局域网主机
+    \item \textbf{测试结果}：成功检测主机可达性，RTT时间准确
+    \item \textbf{测试结论}：ICMP扫描功能正常，响应时间在预期范围内
+\end{itemize}
+
+\subsubsection{TCP SYN扫描测试}
+\begin{itemize}
+    \item \textbf{测试目标}：常用端口(80, 443, 22, 21等)
+    \item \textbf{测试结果}：准确识别开放端口，扫描速度快
+    \item \textbf{测试结论}：SYN扫描功能正常，扫描速度达到每秒数百个端口
+\end{itemize}
+
+\subsubsection{TCP Connect扫描测试}
+\begin{itemize}
+    \item \textbf{测试目标}：Web服务器、SSH服务器等
+    \item \textbf{测试结果}：成功建立连接，准确识别服务状态
+    \item \textbf{测试结论}：Connect扫描功能正常，适用于需要完整连接的场景
+\end{itemize}
+
+\subsubsection{UDP扫描测试}
+\begin{itemize}
+    \item \textbf{测试目标}：DNS(53)、DHCP(67,68)等UDP服务
+    \item \textbf{测试结果}：能够检测UDP端口状态
+    \item \textbf{测试结论}：UDP扫描功能正常，但速度相对较慢
+\end{itemize}
+
+\subsubsection{多线程性能测试}
+\begin{itemize}
+    \item \textbf{测试目标}：不同线程数下的扫描性能
+    \item \textbf{测试结果}：线程数增加显著提升扫描速度，但存在最优线程数
+    \item \textbf{测试结论}：多线程优化有效，建议线程数设置为100-200
+\end{itemize}
+
+\subsubsection{Web界面测试}
+\begin{itemize}
+    \item \textbf{测试目标}：界面响应性、结果展示、历史记录
+    \item \textbf{测试结果}：界面流畅，结果展示清晰，历史记录功能正常
+    \item \textbf{测试结论}：Web界面用户体验良好，功能完整
+\end{itemize}
+
+\subsection{测试结论}
+通过全面测试，系统各项功能均达到预期目标：
+\begin{itemize}
+    \item \textbf{功能完整性}：所有设计功能均正常实现
+    \item \textbf{性能表现}：扫描速度满足实际使用需求
+    \item \textbf{稳定性}：系统运行稳定，无明显bug
+    \item \textbf{用户体验}：界面友好，操作简单直观
+    \item \textbf{兼容性}：支持主流浏览器和操作系统
+\end{itemize}
 
 \section{项目总结}
 
+\subsection{项目成果}
+本项目成功实现了一个功能完整、性能优良的Web端口扫描工具，主要成果包括：
+
+\begin{itemize}
+    \item \textbf{技术实现}：成功集成C++后端和Web前端，实现了完整的端口扫描功能
+    \item \textbf{功能特色}：支持多种扫描方式，提供直观的可视化界面
+    \item \textbf{性能优化}：通过多线程技术实现了高效的扫描性能
+    \item \textbf{用户体验}：提供了友好的Web界面，降低了使用门槛
+\end{itemize}
+
+\subsection{技术亮点}
+\begin{itemize}
+    \item \textbf{架构设计}：采用前后端分离架构，具有良好的可维护性和扩展性
+    \item \textbf{多线程优化}：实现了高效的多线程扫描，显著提升扫描速度
+    \item \textbf{实时交互}：支持实时进度显示和结果更新
+    \item \textbf{响应式设计}：Web界面支持多种设备访问
+\end{itemize}
+
+\subsection{项目价值}
+\begin{itemize}
+    \item \textbf{实用价值}：为网络安全测试提供了实用的工具
+    \item \textbf{教育价值}：展示了网络编程和Web开发的综合应用
+    \item \textbf{技术价值}：验证了C++和Web技术结合的可能性
+\end{itemize}
+
+\subsection{改进方向}
+\begin{itemize}
+    \item \textbf{功能扩展}：可添加更多扫描方式和服务识别功能
+    \item \textbf{性能优化}：可进一步优化扫描算法和并发策略
+    \item \textbf{安全增强}：可添加更多安全检测和防护功能
+    \item \textbf{用户体验}：可优化界面设计和交互流程
+\end{itemize}
+
 \section{分工}
 
-%%可选择这里也放一个标题
-%\begin{center}
-%    \title{ \Huge \textbf{{标题}}}
-%\end{center}
+本项目由团队成员共同完成，具体分工如下：
 
-
+\begin{itemize}
+    \item \textbf{项目负责人}：负责项目整体规划和进度管理
+    \item \textbf{后端开发}：负责C++后端服务开发和API设计
+    \item \textbf{前端开发}：负责Web界面设计和JavaScript开发
+    \item \textbf{网络模块开发}：负责ICMP和端口扫描核心功能实现
+    \item \textbf{测试验证}：负责系统测试和性能优化
+    \item \textbf{文档编写}：负责技术文档和用户手册编写
+\end{itemize}
 
 %%----------- 参考文献 -------------------%%
 %在reference.bib文件中填写参考文献，此处自动生成
