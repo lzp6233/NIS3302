@@ -1232,6 +1232,8 @@
         let currentPortRange = ''; // 当前端口范围
         let portChartInstance = null;
         let errorTimeout = null; // 错误提示定时器
+        let expectedScanTime = 0; // 预期扫描时间（秒）
+        let lastProgressUpdate = 0; // 上次进度更新时间
 
         // 错误提示函数
         function showError(message) {
@@ -1555,17 +1557,38 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
     scanButton.disabled = true;
     scanButton.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i><span>扫描中...</span>';
 
+    // 计算预期扫描时间
+    if (currentScanType === 'icmp') {
+        expectedScanTime = 3; // ICMP扫描通常1-3秒
+    } else {
+        // 根据扫描类型和端口数量估算时间
+        const baseTimePerPort = currentScanType === 'syn' ? 0.1 : 0.05; // SYN扫描稍慢
+        const threadCount = Number(document.getElementById('threads')?.value) || 100;
+        const concurrentPorts = Math.min(threadCount, totalPorts);
+        
+        // 考虑并发和网络延迟
+        expectedScanTime = Math.max(5, (totalPorts / concurrentPorts) * baseTimePerPort);
+        
+        // 根据扫描类型调整
+        if (currentScanType === 'fin') {
+            expectedScanTime *= 1.5; // FIN扫描需要等待响应
+        } else if (currentScanType === 'udp') {
+            expectedScanTime *= 2; // UDP扫描较慢
+        }
+    }
+    
     // 开始计时
     startTime = new Date();
     scanInProgress = true;
+    lastProgressUpdate = 0;
 
     // 启动计时器更新扫描时间（每1秒更新一次）
     timerInterval = setInterval(updateScanTime, 1000);
     
     // 显示扫描开始提示
     document.getElementById('scan-progress-text').textContent = '扫描进行中...';
-    document.getElementById('scan-progress-bar').style.width = '50%';
-    document.getElementById('scan-speed').textContent = '计算中...';
+    document.getElementById('scan-progress-bar').style.width = '0%';
+    document.getElementById('scan-speed').textContent = '初始化中...';
 
     // ICMP扫描结果处理函数
     const processIcmpResults = function(scanResults) {
@@ -1867,7 +1890,8 @@ portChartInstance = new Chart(ctx, {
         
         // 显示扫描完成状态
         document.getElementById('scan-progress-bar').style.width = '100%';
-        document.getElementById('scan-progress-text').textContent = '扫描完成';
+        document.getElementById('scan-progress-text').textContent = '100%';
+        document.getElementById('scan-speed').textContent = '扫描完成';
         
         // 恢复按钮状态
         scanButton.disabled = false;
@@ -1890,8 +1914,8 @@ if (exportButton) {
         
         // 显示扫描取消状态
         document.getElementById('scan-progress-bar').style.width = '0%';
-        document.getElementById('scan-progress-text').textContent = '扫描已取消';
-        document.getElementById('scan-speed').textContent = '已停止';
+        document.getElementById('scan-progress-text').textContent = '已取消';
+        document.getElementById('scan-speed').textContent = '扫描已停止';
         
         document.getElementById('scan-status').classList.add('hidden');
         document.getElementById('no-results').classList.remove('hidden');
@@ -1946,7 +1970,7 @@ if (exportButton) {
             historyTable.insertBefore(row, historyTable.firstChild);
         }
 
-        // 更新扫描时间
+        // 更新扫描时间和进度
         const updateScanTime = function() {
             const currentTime = new Date();
             const elapsedTime = (currentTime - startTime) / 1000; // 秒
@@ -1958,10 +1982,59 @@ if (exportButton) {
             
             document.getElementById('scan-time').textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
             
-            // 更新扫描速度（基于总端口数和已用时间）
-            if (elapsedTime > 0) {
+            // 智能进度预测
+            if (elapsedTime > 0 && totalPorts > 0) {
+                // 基于预期时间的进度预测
+                let progressPercent = 0;
+                
+                if (expectedScanTime > 0) {
+                    // 使用预期扫描时间进行更精确的预测
+                    progressPercent = Math.min(95, (elapsedTime / expectedScanTime) * 100);
+                    
+                    // 添加一些随机性，避免进度条过于线性
+                    const timeVariation = Math.sin(elapsedTime * 0.5) * 2; // 添加±2%的波动
+                    progressPercent = Math.max(0, Math.min(95, progressPercent + timeVariation));
+                } else {
+                    // 备用预测算法
+                    if (currentScanType === 'icmp') {
+                        progressPercent = Math.min(95, (elapsedTime / 3) * 100);
+                    } else if (totalPorts <= 100) {
+                        progressPercent = Math.min(95, (elapsedTime / 8) * 100);
+                    } else if (totalPorts <= 1000) {
+                        progressPercent = Math.min(95, (elapsedTime / 20) * 100);
+                    } else if (totalPorts <= 10000) {
+                        progressPercent = Math.min(95, (elapsedTime / 60) * 100);
+                    } else {
+                        progressPercent = Math.min(95, (elapsedTime / 300) * 100);
+                    }
+                }
+                
+                // 平滑进度更新，避免跳跃
+                const currentProgress = parseFloat(document.getElementById('scan-progress-bar').style.width) || 0;
+                const smoothProgress = currentProgress + (progressPercent - currentProgress) * 0.3;
+                
+                // 更新进度条
+                document.getElementById('scan-progress-bar').style.width = `${smoothProgress}%`;
+                document.getElementById('scan-progress-text').textContent = `${Math.round(smoothProgress)}%`;
+                
+                // 计算扫描速度
                 const estimatedSpeed = Math.floor(totalPorts / elapsedTime);
-                document.getElementById('scan-speed').textContent = `约 ${estimatedSpeed} 端口/秒`;
+                let speedText = `约 ${estimatedSpeed} 端口/秒`;
+                
+                // 估算剩余时间
+                if (smoothProgress > 0 && smoothProgress < 95) {
+                    const remainingTime = (elapsedTime / smoothProgress) * (100 - smoothProgress);
+                    const remainingMinutes = Math.floor(remainingTime / 60);
+                    const remainingSeconds = Math.floor(remainingTime % 60);
+                    
+                    if (remainingMinutes > 0) {
+                        speedText += ` (预计剩余 ${remainingMinutes}分${remainingSeconds}秒)`;
+                    } else {
+                        speedText += ` (预计剩余 ${remainingSeconds}秒)`;
+                    }
+                }
+                
+                document.getElementById('scan-speed').textContent = speedText;
             }
         };
     </script>
