@@ -154,23 +154,9 @@ Web前端模块负责提供用户界面和交互功能，采用响应式设计�
     \item \textbf{历史记录对象}：包含历史扫描的配置和结果
 \end{itemize}
 
-\subsubsection{核心函数设计}
+% 替换“Web前端模块设计”中的核心函数设计
 
-\textbf{函数名}：startScan(config)
-\begin{itemize}
-    \item \textbf{输入参数}：扫描配置对象
-    \item \textbf{输出类型}：Promise对象
-    \item \textbf{函数功能}：发起扫描请求，处理响应
-    \item \textbf{依赖函数}：updateProgress(), displayResults()
-    \item \textbf{处理流程}：
-    \begin{enumerate}
-        \item 验证输入参数
-        \item 发送HTTP请求到后端API
-        \item 实时更新扫描进度
-        \item 接收并处理扫描结果
-        \item 更新界面显示
-    \end{enumerate}
-\end{itemize}
+% ---- Web前端模块设计核心函数设计部分删除，因无C++实现 ----
 
 \subsection{后端API模块设计}
 
@@ -186,20 +172,36 @@ Web前端模块负责提供用户界面和交互功能，采用响应式设计�
 
 \subsubsection{核心函数设计}
 
-\textbf{函数名}：handlePortScan(target, scanType, portRange, customPorts, threads, timeout)
-\begin{itemize}
-    \item \textbf{输入参数}：目标地址、扫描类型、端口范围、自定义端口、线程数、超时时间
-    \item \textbf{输出类型}：JSON对象
-    \item \textbf{函数功能}：处理端口扫描请求，返回扫描结果
-    \item \textbf{依赖函数}：tcpSynScan(), tcpConnectScan(), udpScan()
-    \item \textbf{处理流程}：
-    \begin{enumerate}
-        \item 参数验证和预处理
-        \item 根据扫描类型调用相应扫描函数
-        \item 收集扫描结果
-        \item 格式化返回数据
-    \end{enumerate}
-\end{itemize}
+% 真实函数声明和说明：
+\textbf{函数声明}：
+\begin{verbatim}
+bool TestPortConnection(std::string ip, int port);
+\end{verbatim}
+\textbf{简要说明}：测试指定IP和端口是否开放
+
+\textbf{函数声明}：
+\begin{verbatim}
+std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports);
+\end{verbatim}
+\textbf{简要说明}：对指定IP和端口列表进行TCP SYN扫描，返回开放端口列表
+
+\textbf{函数声明}：
+\begin{verbatim}
+std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& ports);
+\end{verbatim}
+\textbf{简要说明}：对指定IP和端口列表进行TCP FIN扫描，返回开放端口列表
+
+\textbf{函数声明}：
+\begin{verbatim}
+std::vector<int> tcpConnectScanJson(const std::string& ip, const std::vector<int>& ports);
+\end{verbatim}
+\textbf{简要说明}：对指定IP和端口列表进行TCP Connect扫描，返回开放端口列表
+
+\textbf{函数声明}：
+\begin{verbatim}
+void UDPScan(const std::string& ip, int option);
+\end{verbatim}
+\textbf{简要说明}：对指定IP进行UDP端口扫描
 
 \subsection{ICMP扫描模块设计}
 
@@ -213,23 +215,14 @@ ICMP扫描模块实现ping功能，用于检测目标主机的可达性，支持
     \item \textbf{网络地址结构}：包含IP地址、端口等信息
 \end{itemize}
 
-\subsubsection{核心函数设计}
+% 由于ICMP相关函数未在PortScanner.h中出现，此处可留空或注明见ICMP模块
 
-\textbf{函数名}：ping(target, timeout)
-\begin{itemize}
-    \item \textbf{输入参数}：目标地址、超时时间
-    \item \textbf{输出类型}：std::optional<std::chrono::milliseconds>
-    \item \textbf{函数功能}：发送ICMP echo请求，检测主机可达性
-    \item \textbf{依赖函数}：createSocket(), sendEchoRequest(), receiveEchoReply()
-    \item \textbf{处理流程}：
-    \begin{enumerate}
-        \item 创建原始套接字
-        \item 构造ICMP echo请求包
-        \item 发送请求并等待响应
-        \item 计算往返时间
-        \item 返回结果
-    \end{enumerate}
-\end{itemize}
+% 真实ICMP扫描相关函数声明和说明：
+\textbf{函数声明}：
+\begin{verbatim}
+std::optional<double_milliseconds> icmp_ns::ping(const std::string& address, std::chrono::milliseconds timeout);
+\end{verbatim}
+\textbf{简要说明}：对指定地址进行ICMP ping操作，返回往返时延（毫秒），超时则返回空值
 
 \subsection{端口扫描模块设计}
 
@@ -245,22 +238,30 @@ ICMP扫描模块实现ping功能，用于检测目标主机的可达性，支持
 
 \subsubsection{核心函数设计}
 
-\textbf{函数名}：TCPSynScanJson(target, ports)
-\begin{itemize}
-    \item \textbf{输入参数}：目标地址、端口列表
-    \item \textbf{输出类型}：std::vector<int>
-    \item \textbf{函数功能}：执行TCP SYN扫描，返回开放端口列表
-    \item \textbf{依赖函数}：createRawSocket(), sendSynPacket(), receiveResponse()
-    \item \textbf{处理流程}：
-    \begin{enumerate}
-        \item 创建原始套接字
-        \item 构造TCP SYN包
-        \item 发送SYN包到目标端口
-        \item 监听SYN-ACK响应
-        \item 判断端口状态
-        \item 返回开放端口列表
-    \end{enumerate}
-\end{itemize}
+% 真实函数声明和说明（与上方一致，可合并引用）
+\textbf{函数声明}：
+\begin{verbatim}
+std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports);
+\end{verbatim}
+\textbf{简要说明}：对指定IP和端口列表进行TCP SYN扫描，返回开放端口列表
+
+\textbf{函数声明}：
+\begin{verbatim}
+std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& ports);
+\end{verbatim}
+\textbf{简要说明}：对指定IP和端口列表进行TCP FIN扫描，返回开放端口列表
+
+\textbf{函数声明}：
+\begin{verbatim}
+std::vector<int> tcpConnectScanJson(const std::string& ip, const std::vector<int>& ports);
+\end{verbatim}
+\textbf{简要说明}：对指定IP和端口列表进行TCP Connect扫描，返回开放端口列表
+
+\textbf{函数声明}：
+\begin{verbatim}
+void UDPScan(const std::string& ip, int option);
+\end{verbatim}
+\textbf{简要说明}：对指定IP进行UDP端口扫描
 
 \section{系统实现与测试}
 
