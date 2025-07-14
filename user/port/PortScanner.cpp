@@ -22,6 +22,7 @@
 #include <pcap.h>
 #include <ifaddrs.h>
 #include "../ICMP/network.h"
+#include <netinet/udp.h>  // 包含UDP头部定义
 std::mutex bufferLock;
 
 
@@ -919,33 +920,145 @@ void UDPScan(const std::string& ip, int option) {
     }
     std::cout << "[UDP] 扫描 " << ip << " ...\n";
     for (int port : ports) {
+        // 抓包线程相关变量
+        std::atomic<bool> got_result(false);
+        std::string result_msg;
+        std::string iface = get_default_iface();
+        std::cout << "抓包网卡: " << iface << " 目标IP: " << ip << std::endl;
+        char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
+        pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 2000, pcap_errbuf);
+        if (!handle) {
+            std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
+            continue;
+        }
+
+        std::string filter_exp = "icmp and src host " + ip;
+        struct bpf_program fp;
+        if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
+            pcap_setfilter(handle, &fp) == -1) {
+            std::cerr << "pcap filter error" << std::endl;
+            pcap_close(handle);
+            continue;
+        }
+        
+        // 启用过滤规则：只捕获目标IP的ICMP端口不可达消息
+        // std::string filter_exp = "icmp[0] == 3 and icmp[1] == 3 and src host " + ip;
+        // struct bpf_program fp;
+        // if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1) {
+        //     std::cerr << "pcap_compile error: " << pcap_geterr(handle) << std::endl;
+        //     pcap_close(handle);
+        //     continue;
+        // }
+        // if (pcap_setfilter(handle, &fp) == -1) {
+        //     std::cerr << "pcap_setfilter error: " << pcap_geterr(handle) << std::endl;
+        //     pcap_freecode(&fp);
+        //     pcap_close(handle);
+        //     continue;
+        // }
+        // pcap_freecode(&fp);
+
+        // 抓包线程：监听ICMP端口不可达
         int sock = socket(AF_INET, SOCK_DGRAM, 0);
         if (sock < 0) {
             std::cerr << "Socket creation failed for port " << port << std::endl;
+            pcap_close(handle);
             continue;
         }
+
         struct sockaddr_in addr;
         memset(&addr, 0, sizeof(addr));
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port);
         inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
 
+        // 设置UDP接收超时
         struct timeval tv;
         tv.tv_sec = 2;
         tv.tv_usec = 0;
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
+        std::thread sniffer([&]() {
+            auto start = std::chrono::steady_clock::now();
+            while (!got_result && std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+                struct pcap_pkthdr* header;
+                const u_char* pkt_data;
+                int res = pcap_next_ex(handle, &header, &pkt_data);
+                if (res != 1) {
+                    if (res == 0) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    else break;
+                    continue;
+                }
+
+                // 步骤1：解析链路层，定位IP头部
+                int linktype = pcap_datalink(handle);
+                const u_char* ip_pkt = nullptr;
+                if (linktype == DLT_EN10MB) ip_pkt = pkt_data + 14; // 以太网
+                else if (linktype == DLT_NULL) ip_pkt = pkt_data + 4;
+                else if (linktype == DLT_RAW) ip_pkt = pkt_data;
+                else if (linktype == DLT_LINUX_SLL) ip_pkt = pkt_data + 16;
+                else continue;
+
+                // 步骤2：解析IP头部，验证协议为ICMP
+                const struct iphdr* ip_hdr = (const struct iphdr*)ip_pkt;
+                if (ip_hdr->protocol != IPPROTO_ICMP) continue;
+
+                // 步骤3：验证ICMP消息的源IP是目标IP
+                struct in_addr icmp_src_addr;
+                icmp_src_addr.s_addr = ip_hdr->saddr;
+                std::string icmp_src_ip = inet_ntoa(icmp_src_addr);
+                if (icmp_src_ip != ip) continue;
+
+                // 步骤4：解析ICMP头部，验证类型和代码（类型3，代码3）
+                int ip_hdr_len = ip_hdr->ihl * 4;
+                const u_char* icmp_pkt = ip_pkt + ip_hdr_len;
+                if (icmp_pkt + 16 > pkt_data + header->caplen) continue; // 确保数据足够
+                uint8_t icmp_type = icmp_pkt[0];
+                uint8_t icmp_code = icmp_pkt[1];
+                if (icmp_type != 3 || icmp_code != 3) continue;
+
+                // 步骤5：解析ICMP消息中包含的原始UDP包，验证目标端口
+                // 跳过ICMP头部后的8字节错误数据区，定位原始IP头部
+                const struct iphdr* orig_ip_hdr = (const struct iphdr*)(icmp_pkt + 8);
+                if (orig_ip_hdr->protocol != IPPROTO_UDP) continue; // 确保原始包是UDP
+
+                // 解析原始UDP头部，提取目标端口
+                int orig_ip_len = orig_ip_hdr->ihl * 4;
+                const struct udphdr* orig_udp_hdr = (const struct udphdr*)((u_char*)orig_ip_hdr + orig_ip_len);
+                uint16_t orig_dst_port = ntohs(orig_udp_hdr->dest); // 原始UDP包的目标端口
+
+                // 验证原始端口与当前扫描端口一致
+                if (orig_dst_port == port) {
+                    result_msg = "Port " + std::to_string(port) + " is CLOSED (ICMP port unreachable)";
+                    got_result = true;
+                    break;
+                }
+            }
+        });
+
+        // 发送UDP探测包（必须在抓包线程启动后）
         char sendbuf[1] = {0};
         sendto(sock, sendbuf, sizeof(sendbuf), 0, (struct sockaddr*)&addr, sizeof(addr));
 
+        // 主线程：等待UDP响应（不提前设置结果）
         char recvbuf[1024];
         socklen_t addrlen = sizeof(addr);
         int ret = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, (struct sockaddr*)&addr, &addrlen);
-        if (ret < 0) {
-            std::cout << "Port " << port << " is open|filtered (no response)" << std::endl;
-        } else {
+
+        // 等待抓包线程完成，统一判断结果
+        sniffer.join();
+        if (!result_msg.empty()) {
+            // 抓包线程已判定为关闭
+            std::cout << result_msg << std::endl;
+        } else if (ret > 0) {
+            // 收到UDP响应 → 开放
             std::cout << "Port " << port << " is open (response received)" << std::endl;
+        } else {
+            // 无响应 → open|filtered
+            std::cout << "Port " << port << " is open|filtered (no response)" << std::endl;
         }
+
+        // 清理资源
+        pcap_close(handle);
         close(sock);
     }
 }
