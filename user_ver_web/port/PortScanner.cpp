@@ -776,117 +776,90 @@ void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
 }
 
 
-// 优化的多端口SYN扫描，返回开放端口列表
-std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports) {
+// 优化的多端口SYN扫描，返回开放端口列表和过滤端口列表
+std::pair<std::vector<int>, std::vector<int>> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports) {
     std::vector<int> openPorts;
+    std::vector<int> filteredPorts;
     std::mutex resultMutex;
-    std::mutex libnetMutex; // 添加libnet互斥锁
-    
-    // 预初始化libnet和pcap，避免重复初始化
-    char errbuf[LIBNET_ERRBUF_SIZE] = {0};
-    libnet_t *l = libnet_init(LIBNET_RAW4, nullptr, errbuf);
-    if (!l) {
-        std::cerr << "libnet_init() failed: " << errbuf << std::endl;
-        return openPorts;
-    }
-    
-    char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
-    std::string iface = get_default_iface();
-    if (iface.empty()) {
-        std::cerr << "Failed to get default interface" << std::endl;
-        libnet_destroy(l);
-        return openPorts;
-    }
-    
-    pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 1000, pcap_errbuf); // 减少超时时间
-    if (!handle) {
-        std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
-        libnet_destroy(l);
-        return openPorts;
-    }
-    
-    // 使用线程池进行并发扫描
     const int max_threads = 200;
     std::vector<std::thread> threads;
-    
     auto scanPort = [&](int port) {
-        // 为每个线程生成唯一的源端口
+        char errbuf[LIBNET_ERRBUF_SIZE] = {0};
+        libnet_t *l = libnet_init(LIBNET_RAW4, nullptr, errbuf);
+        if (!l) return;
+        char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
+        std::string iface = get_default_iface();
+        if (iface.empty()) {
+            libnet_destroy(l);
+            return;
+        }
+        pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 1000, pcap_errbuf);
+        if (!handle) {
+            libnet_destroy(l);
+            return;
+        }
         uint16_t src_port = 40000 + (dis(gen) % 20000);
-        
-        // 使用互斥锁保护libnet操作
-        std::lock_guard<std::mutex> lock(libnetMutex);
-        
         uint32_t src_ip = libnet_get_ipaddr4(l);
         uint32_t dst_ip = libnet_name2addr4(l, const_cast<char*>(ip.c_str()), LIBNET_RESOLVE);
-        
-        // 构建TCP SYN包
         libnet_ptag_t tcp_tag = libnet_build_tcp(
             src_port, port, dis(gen), dis(gen), TH_SYN, 32767, 0, 0, LIBNET_TCP_H, nullptr, 0, l, 0
         );
-        
         libnet_ptag_t ip_tag = libnet_build_ipv4(
             LIBNET_IPV4_H + LIBNET_TCP_H, 0, dis(gen), 0, 64, IPPROTO_TCP, 0,
             src_ip, dst_ip, nullptr, 0, l, 0
         );
-        
-        if (tcp_tag == -1 || ip_tag == -1) return;
-        
-        // 发送包
-        if (libnet_write(l) < 0) return;
-        
-        // 设置pcap过滤器
+        if (tcp_tag == -1 || ip_tag == -1) {
+            pcap_close(handle);
+            libnet_destroy(l);
+            return;
+        }
+        if (libnet_write(l) < 0) {
+            pcap_close(handle);
+            libnet_destroy(l);
+            return;
+        }
         std::string filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
         struct bpf_program fp;
         if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
             pcap_setfilter(handle, &fp) == -1) {
+            pcap_close(handle);
+            libnet_destroy(l);
             return;
         }
-        
-        // 等待响应
         struct pcap_pkthdr* header;
         const u_char* pkt_data;
         int res = pcap_next_ex(handle, &header, &pkt_data);
-        
         if (res == 1) {
-            // 解析响应包 - 添加边界检查
             if (header->len >= 14 + sizeof(struct ip)) {
                 const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
                 if (header->len >= 14 + ip_hdr->ip_hl * 4 + sizeof(struct tcphdr)) {
                     const struct tcphdr* tcp_hdr = (struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
-                    
-                    // 检查是否为SYN+ACK响应
                     if ((tcp_hdr->th_flags & TH_SYN) && (tcp_hdr->th_flags & TH_ACK)) {
                         std::lock_guard<std::mutex> lock(resultMutex);
                         openPorts.push_back(port);
                     }
                 }
             }
+        } else {
+            std::lock_guard<std::mutex> lock(resultMutex);
+            filteredPorts.push_back(port);
         }
-        
-        // 清理当前包，准备下一个
-        libnet_clear_packet(l);
-    }; // 互斥锁在这里自动释放
-    
-    // 分批处理端口
+        pcap_close(handle);
+        libnet_destroy(l);
+    };
     for (size_t i = 0; i < ports.size(); i += max_threads) {
         threads.clear();
         size_t end = std::min(i + max_threads, ports.size());
-        
         for (size_t j = i; j < end; j++) {
             threads.emplace_back(scanPort, ports[j]);
         }
-        
         for (auto& thread : threads) {
             thread.join();
         }
     }
-    
-    // 清理资源
-    pcap_close(handle);
-    libnet_destroy(l);
-    
     std::sort(openPorts.begin(), openPorts.end());
-    return openPorts;
+    std::sort(filteredPorts.begin(), filteredPorts.end());
+    return {openPorts, filteredPorts};
 }
 
 // 优化的多端口FIN扫描，返回开放端口列表

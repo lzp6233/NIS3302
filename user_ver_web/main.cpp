@@ -94,8 +94,9 @@ json tcpConnectScan(const std::string& target, const std::vector<int>& ports, in
 json tcpSynScan(const std::string& target, const std::vector<int>& ports) {
     json result;
     // 新实现：调用 PortScanner.cpp 的 TCPSynScanJson
-    std::vector<int> openPorts = TCPSynScanJson(target, ports);
-    std::vector<int> filteredPorts; // 暂不区分filtered/closed
+    auto scanResult = TCPSynScanJson(target, ports);
+    const std::vector<int>& openPorts = scanResult.first;
+    const std::vector<int>& filteredPorts = scanResult.second;
     result["openPorts"] = openPorts;
     result["filteredPorts"] = filteredPorts;
     result["totalScanned"] = ports.size();

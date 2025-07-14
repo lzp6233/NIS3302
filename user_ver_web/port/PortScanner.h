@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <utility>
 
 // 测试端口是否开放
 bool TestPortConnection(std::string ip, int port);
@@ -29,7 +30,7 @@ void ScanSpecificPort(std::string hostNameArg, int port);
 void ScanCommonPorts(std::string hostNameArg);
 
 // 新实现：多端口SYN扫描，返回开放端口列表
-std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports);
+std::pair<std::vector<int>, std::vector<int>> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports);
 // 新实现：多端口FIN扫描，返回开放端口列表
 std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& ports);
 // UDP扫描
