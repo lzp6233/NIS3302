@@ -50,15 +50,9 @@ bool tcp_scan(const std::string& ip, int option) {
     return false;
 }
 
-bool tcp_syn_scan(const std::string& ip, int option) {
-    TCPSynScan(ip, option);
-    return false;
-}
-
-bool tcp_fin_scan(const std::string& ip, int option) {
-    TCPFinScan(ip, option);
-    return false;
-}
+// 声明接口，不再定义，避免与 PortScanner.cpp 冲突
+extern void TCPSynScan(const std::string& ip, int option);
+extern void TCPFinScan(const std::string& ip, int option);
 
 bool udp_scan(const std::string& ip, int option) {
     UDPScan(ip, option);
@@ -112,7 +106,7 @@ int main() {
             std::cin >> option;
 
         }
-        bool open = tcp_syn_scan(target_ip, option);
+        TCPSynScan(target_ip, option);
     } 
     else if (scan_type == 4) {
         std::string target_ip;
@@ -126,7 +120,7 @@ int main() {
             std::cout << "无效的选项，请重新选择。" << std::endl;
             std::cin >> option;
         }
-        bool open = tcp_fin_scan(target_ip, option);
+        TCPFinScan(target_ip, option);
     } 
     else if (scan_type == 5) {
         std::string target_ip;
