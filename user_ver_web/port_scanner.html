@@ -587,13 +587,37 @@
                                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">协议</th>
                                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">服务</th>
                                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">版本</th>
-                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">风险等级</th>
+                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
                                             </tr>
                                         </thead>
                                         <tbody id="open-ports-table" class="bg-white divide-y divide-gray-200">
                                             <!-- 表格内容将通过JavaScript动态生成 -->
                                             <tr>
                                                 <td colspan="5" class="px-6 py-4 text-center text-gray-500">暂无开放端口</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <!-- 关闭端口表格 -->
+                            <div class="mt-8">
+                                <h4 class="text-lg font-semibold text-dark mb-4">关闭端口详情</h4>
+                                <div class="overflow-x-auto">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">端口</th>
+                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">协议</th>
+                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">服务</th>
+                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">版本</th>
+                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="closed-ports-table" class="bg-white divide-y divide-gray-200">
+                                            <!-- 表格内容将通过JavaScript动态生成 -->
+                                            <tr>
+                                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">暂无关闭端口</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -1423,36 +1447,55 @@ function generateExportData(results) {
             `${currentTarget},ICMP扫描,${alive ? '存活' : '不可达'},${rtt},${new Date().toLocaleString()}`
         ].join('\n');
     } 
-    // 处理端口扫描结果
-    else if (results.openPorts && results.openPorts.length > 0) {
+    // 处理端口扫描结果（包括TCP Connect、SYN、FIN、UDP扫描）
+    else {
         // 根据扫描类型确定状态文本
         const isFinScan = currentScanType === 'fin';
-        const statusText = isFinScan ? '开放|过滤' : '开放';
         
         // 表头
-        const header = '端口,状态,服务,版本,风险等级';
-        // 数据行
-        const rows = results.openPorts.map(port => {
-            const service = predictService(port);
-            const riskLevel = getServiceRiskLevel(port, service);
-            return `${port},${statusText},${service},unknown,${riskLevel}`;
-        });
+        const header = '端口,状态,服务,版本,扫描时间';
         
-        return [header, ...rows].join('\n');
-    } 
-    // 无开放端口
-    else {
-        const isFinScan = currentScanType === 'fin';
-        const resultText = isFinScan ? '无开放|过滤端口' : '无开放端口';
+        // 收集所有端口数据
+        const allPorts = [];
         
-        return [
-            '扫描结果汇总',
-            `目标: ${currentTarget}`,
-            `扫描类型: ${currentScanType.toUpperCase()}`,
-            `端口范围: ${currentPortRange}`,
-            `扫描时间: ${new Date().toLocaleString()}`,
-            `结果: ${resultText}`
-        ].join('\n');
+        // 添加开放端口
+        if (results.openPorts && results.openPorts.length > 0) {
+            const statusText = isFinScan ? '开放|过滤' : '开放';
+            results.openPorts.forEach(port => {
+                const service = predictService(port);
+                allPorts.push(`${port},${statusText},${service},unknown,${new Date().toLocaleString()}`);
+            });
+        }
+        
+        // 添加关闭端口
+        if (results.closedPorts && results.closedPorts.length > 0) {
+            results.closedPorts.forEach(port => {
+                const service = predictService(port);
+                allPorts.push(`${port},关闭,${service},unknown,${new Date().toLocaleString()}`);
+            });
+        }
+        
+        // 添加过滤端口
+        if (results.filteredPorts && results.filteredPorts.length > 0) {
+            results.filteredPorts.forEach(port => {
+                const service = predictService(port);
+                allPorts.push(`${port},过滤,${service},unknown,${new Date().toLocaleString()}`);
+            });
+        }
+        
+        if (allPorts.length > 0) {
+            return [header, ...allPorts].join('\n');
+        } else {
+            const resultText = isFinScan ? '无开放|过滤端口' : '无开放端口';
+            return [
+                '扫描结果汇总',
+                `目标: ${currentTarget}`,
+                `扫描类型: ${currentScanType.toUpperCase()}`,
+                `端口范围: ${currentPortRange}`,
+                `扫描时间: ${new Date().toLocaleString()}`,
+                `结果: ${resultText}`
+            ].join('\n');
+        }
     }
 }
 
@@ -1638,6 +1681,9 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
         // 隐藏端口分布图表
         document.querySelector('.mb-8:nth-child(2)').classList.add('hidden');
         
+        // 隐藏关闭端口表格（ICMP扫描不需要）
+        document.querySelector('.mt-8').classList.add('hidden');
+        
         // 更新开放端口表格为ICMP结果
         const openPortsTable = document.getElementById('open-ports-table');
         openPortsTable.innerHTML = '';
@@ -1713,10 +1759,16 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
         // 显示端口分布图表
         document.querySelector('.mb-8:nth-child(2)').classList.remove('hidden');
         
+        // 显示关闭端口表格（端口扫描需要）
+        document.querySelector('.mt-8').classList.remove('hidden');
+        
+        // 获取关闭端口数据
+        const closedPorts = scanResults.closedPorts || [];
+        
         // 更新端口统计
         document.getElementById('open-ports-count').textContent = scanResults.openPorts.length;
         document.getElementById('filtered-ports-count').textContent = scanResults.filteredPorts ? scanResults.filteredPorts.length : 0;
-        document.getElementById('closed-ports-count').textContent = totalPorts - scanResults.openPorts.length - (scanResults.filteredPorts ? scanResults.filteredPorts.length : 0);
+        document.getElementById('closed-ports-count').textContent = closedPorts.length;
         document.getElementById('total-ports-count').textContent = totalPorts;
     
     // 创建端口分布图表
@@ -1736,7 +1788,7 @@ portChartInstance = new Chart(ctx, {
             data: [
                 scanResults.openPorts.length,
                 scanResults.filteredPorts ? scanResults.filteredPorts.length : 0,
-                totalPorts - scanResults.openPorts.length - (scanResults.filteredPorts ? scanResults.filteredPorts.length : 0)
+                closedPorts.length
             ],
             backgroundColor: [
                 '#00B42A', // 绿色 - 开放
@@ -1776,8 +1828,6 @@ portChartInstance = new Chart(ctx, {
         
         scanResults.openPorts.forEach(port => {
             const service = predictService(port);
-            const riskLevel = getServiceRiskLevel(port, service);
-            const riskStyle = getRiskLevelStyle(riskLevel);
             
             // 根据扫描类型确定状态显示
             const statusText = isFinScan ? '开放|过滤' : '开放';
@@ -1802,6 +1852,45 @@ portChartInstance = new Chart(ctx, {
                 </td>
             `;
             openPortsTable.appendChild(row);
+        });
+    }
+    
+    // 创建关闭端口表格
+    const closedPortsTable = document.getElementById('closed-ports-table');
+    closedPortsTable.innerHTML = '';
+    
+    if (closedPorts.length === 0) {
+        closedPortsTable.innerHTML = `
+            <tr>
+                <td colspan="5" class="px-6 py-4 text-center text-gray-500">暂无关闭端口</td>
+            </tr>
+        `;
+    } else {
+        // 按端口号排序
+        closedPorts.sort((a, b) => a - b);
+        
+        closedPorts.forEach(port => {
+            const service = predictService(port);
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-sm font-medium text-gray-900">${port}</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-sm text-gray-900">TCP</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-sm text-gray-900">${service}</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-sm text-gray-900">unknown</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2 py-1 text-xs font-medium bg-danger/20 text-danger rounded-full">关闭</span>
+                </td>
+            `;
+            closedPortsTable.appendChild(row);
         });
     }
     

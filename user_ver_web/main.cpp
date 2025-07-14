@@ -46,6 +46,7 @@ json handleIcmpScan(const std::string& target) {
 json tcpConnectScan(const std::string& target, const std::vector<int>& ports, int threads = 100) {
     json result;
     std::vector<int> openPorts;
+    std::vector<int> closedPorts;
     std::vector<int> filteredPorts;
     
     // 使用多线程进行扫描
@@ -67,6 +68,9 @@ json tcpConnectScan(const std::string& target, const std::vector<int>& ports, in
                     if (TestPortConnection(target, port)) {
                         std::lock_guard<std::mutex> lock(resultMutex);
                         openPorts.push_back(port);
+                    } else {
+                        std::lock_guard<std::mutex> lock(resultMutex);
+                        closedPorts.push_back(port);
                     }
                 }
             });
@@ -80,11 +84,14 @@ json tcpConnectScan(const std::string& target, const std::vector<int>& ports, in
     
     // 对结果进行排序
     std::sort(openPorts.begin(), openPorts.end());
+    std::sort(closedPorts.begin(), closedPorts.end());
     
     result["openPorts"] = openPorts;
+    result["closedPorts"] = closedPorts;
     result["filteredPorts"] = filteredPorts;
     result["totalScanned"] = ports.size();
     result["openCount"] = openPorts.size();
+    result["closedCount"] = closedPorts.size();
     result["filteredCount"] = filteredPorts.size();
     
     return result;
@@ -96,10 +103,23 @@ json tcpSynScan(const std::string& target, const std::vector<int>& ports) {
     // 新实现：调用 PortScanner.cpp 的 TCPSynScanJson
     std::vector<int> openPorts = TCPSynScanJson(target, ports);
     std::vector<int> filteredPorts; // 暂不区分filtered/closed
+    
+    // 计算关闭端口（所有扫描的端口减去开放和过滤的端口）
+    std::vector<int> closedPorts;
+    for (int port : ports) {
+        bool isOpen = std::find(openPorts.begin(), openPorts.end(), port) != openPorts.end();
+        bool isFiltered = std::find(filteredPorts.begin(), filteredPorts.end(), port) != filteredPorts.end();
+        if (!isOpen && !isFiltered) {
+            closedPorts.push_back(port);
+        }
+    }
+    
     result["openPorts"] = openPorts;
+    result["closedPorts"] = closedPorts;
     result["filteredPorts"] = filteredPorts;
     result["totalScanned"] = ports.size();
     result["openCount"] = openPorts.size();
+    result["closedCount"] = closedPorts.size();
     result["filteredCount"] = filteredPorts.size();
     result["scanMethod"] = "SYN";
     return result;
@@ -111,10 +131,23 @@ json tcpFinScan(const std::string& target, const std::vector<int>& ports) {
     // 新实现：调用 PortScanner.cpp 的 TCPFinScanJson
     std::vector<int> openPorts = TCPFinScanJson(target, ports);
     std::vector<int> filteredPorts; // 暂不区分filtered/closed
+    
+    // 计算关闭端口（所有扫描的端口减去开放和过滤的端口）
+    std::vector<int> closedPorts;
+    for (int port : ports) {
+        bool isOpen = std::find(openPorts.begin(), openPorts.end(), port) != openPorts.end();
+        bool isFiltered = std::find(filteredPorts.begin(), filteredPorts.end(), port) != filteredPorts.end();
+        if (!isOpen && !isFiltered) {
+            closedPorts.push_back(port);
+        }
+    }
+    
     result["openPorts"] = openPorts;
+    result["closedPorts"] = closedPorts;
     result["filteredPorts"] = filteredPorts;
     result["totalScanned"] = ports.size();
     result["openCount"] = openPorts.size();
+    result["closedCount"] = closedPorts.size();
     result["filteredCount"] = filteredPorts.size();
     result["scanMethod"] = "FIN";
     return result;
@@ -125,11 +158,13 @@ json udpScan(const std::string& target, const std::vector<int>& ports) {
     json result;
     std::vector<int> openPorts;
     std::vector<int> filteredPorts;
+    std::vector<int> closedPorts;
     
     // UDP扫描实现
     for (int port : ports) {
         int sock = socket(AF_INET, SOCK_DGRAM, 0);
         if (sock < 0) {
+            closedPorts.push_back(port);
             continue;
         }
         
@@ -164,11 +199,14 @@ json udpScan(const std::string& target, const std::vector<int>& ports) {
     
     std::sort(openPorts.begin(), openPorts.end());
     std::sort(filteredPorts.begin(), filteredPorts.end());
+    std::sort(closedPorts.begin(), closedPorts.end());
     
     result["openPorts"] = openPorts;
+    result["closedPorts"] = closedPorts;
     result["filteredPorts"] = filteredPorts;
     result["totalScanned"] = ports.size();
     result["openCount"] = openPorts.size();
+    result["closedCount"] = closedPorts.size();
     result["filteredCount"] = filteredPorts.size();
     result["scanMethod"] = "UDP";
     
@@ -228,9 +266,11 @@ json handlePortScan(const std::string& target,
         result["scanType"] = scanType;
         result["portRange"] = portRange;
         result["openPorts"] = scanResult["openPorts"];
+        result["closedPorts"] = scanResult.value("closedPorts", json::array());
         result["filteredPorts"] = scanResult["filteredPorts"];
         result["totalPorts"] = portsToScan.size();
         result["openPortCount"] = scanResult["openCount"];
+        result["closedPortCount"] = scanResult.value("closedCount", 0);
         result["filteredPortCount"] = scanResult["filteredCount"];
         result["scanMethod"] = scanResult.value("scanMethod", scanType);
         
