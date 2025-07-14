@@ -515,8 +515,8 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
     
     std::cout << "使用网络接口: " << iface << std::endl;
     
-    // 减少超时时间到500ms，提高扫描速度
-    pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 500, pcap_errbuf);
+    // 使用适中的超时时间，平衡速度和准确性
+    pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 1000, pcap_errbuf);
     if (!handle) {
         std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
         std::cerr << "降级为TCP Connect扫描" << std::endl;
@@ -539,13 +539,21 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
     std::vector<std::thread> threads;
     
     // 创建端口批次，减少线程创建开销
-    const int batch_size = 10; // 每个线程处理10个端口
+    const int batch_size = 5; // 每个线程处理5个端口，减少竞争
     
     auto scanBatch = [&](const std::vector<int>& portBatch) {
-        // 为每个批次创建独立的libnet实例，避免锁竞争
+        // 为每个批次创建独立的libnet和pcap实例，避免竞争条件
         char batch_errbuf[LIBNET_ERRBUF_SIZE] = {0};
         libnet_t *batch_l = libnet_init(LIBNET_RAW4, nullptr, batch_errbuf);
         if (!batch_l) {
+            return;
+        }
+        
+        // 为每个批次创建独立的pcap句柄
+        char batch_pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
+        pcap_t *batch_handle = pcap_open_live(iface.c_str(), 65536, 1, 1000, batch_pcap_errbuf);
+        if (!batch_handle) {
+            libnet_destroy(batch_l);
             return;
         }
         
@@ -577,29 +585,29 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
             // 设置pcap过滤器
             std::string filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
             struct bpf_program fp;
-            if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
-                pcap_setfilter(handle, &fp) == -1) {
+            if (pcap_compile(batch_handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
+                pcap_setfilter(batch_handle, &fp) == -1) {
                 continue;
             }
             
-            // 等待响应，使用更短的超时时间
+            // 等待响应，使用适中的超时时间
             struct pcap_pkthdr* header;
             const u_char* pkt_data;
             
-            // 设置更短的超时时间，提高扫描速度
+            // 设置适中的超时时间，平衡速度和准确性
             struct timeval timeout;
             timeout.tv_sec = 0;  // 0秒
-            timeout.tv_usec = 300000;  // 300ms超时
+            timeout.tv_usec = 800000;  // 800ms超时
             
             // 使用select进行超时控制
             fd_set readfds;
             FD_ZERO(&readfds);
-            FD_SET(pcap_get_selectable_fd(handle), &readfds);
+            FD_SET(pcap_get_selectable_fd(batch_handle), &readfds);
             
-            int select_result = select(pcap_get_selectable_fd(handle) + 1, &readfds, NULL, NULL, &timeout);
+            int select_result = select(pcap_get_selectable_fd(batch_handle) + 1, &readfds, NULL, NULL, &timeout);
             
-            if (select_result > 0 && FD_ISSET(pcap_get_selectable_fd(handle), &readfds)) {
-                int res = pcap_next_ex(handle, &header, &pkt_data);
+            if (select_result > 0 && FD_ISSET(pcap_get_selectable_fd(batch_handle), &readfds)) {
+                int res = pcap_next_ex(batch_handle, &header, &pkt_data);
                 
                 if (res == 1) {
                     // 解析响应包 - 添加边界检查
@@ -623,6 +631,8 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
             libnet_clear_packet(batch_l);
         }
         
+        // 清理批次资源
+        pcap_close(batch_handle);
         libnet_destroy(batch_l);
     };
     
@@ -646,7 +656,7 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
         
         // 在批次之间添加短暂延迟，让系统有时间恢复
         if (end < ports.size()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }
     
@@ -738,8 +748,8 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
     
     std::cout << "使用网络接口: " << iface << std::endl;
     
-    // 减少超时时间到800ms，提高扫描速度
-    pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 800, pcap_errbuf);
+    // 使用适中的超时时间，平衡速度和准确性
+    pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 1200, pcap_errbuf);
     if (!handle) {
         std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
         std::cerr << "降级为TCP Connect扫描" << std::endl;
@@ -762,13 +772,21 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
     std::vector<std::thread> threads;
     
     // 创建端口批次，减少线程创建开销
-    const int batch_size = 8; // 每个线程处理8个端口
+    const int batch_size = 4; // 每个线程处理4个端口，减少竞争
     
     auto scanBatch = [&](const std::vector<int>& portBatch) {
-        // 为每个批次创建独立的libnet实例，避免锁竞争
+        // 为每个批次创建独立的libnet和pcap实例，避免竞争条件
         char batch_errbuf[LIBNET_ERRBUF_SIZE] = {0};
         libnet_t *batch_l = libnet_init(LIBNET_RAW4, nullptr, batch_errbuf);
         if (!batch_l) {
+            return;
+        }
+        
+        // 为每个批次创建独立的pcap句柄
+        char batch_pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
+        pcap_t *batch_handle = pcap_open_live(iface.c_str(), 65536, 1, 1200, batch_pcap_errbuf);
+        if (!batch_handle) {
+            libnet_destroy(batch_l);
             return;
         }
         
@@ -800,8 +818,8 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
             // 设置pcap过滤器
             std::string filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
             struct bpf_program fp;
-            if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
-                pcap_setfilter(handle, &fp) == -1) {
+            if (pcap_compile(batch_handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
+                pcap_setfilter(batch_handle, &fp) == -1) {
                 continue;
             }
             
@@ -817,12 +835,12 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
             // 使用select进行超时控制
             fd_set readfds;
             FD_ZERO(&readfds);
-            FD_SET(pcap_get_selectable_fd(handle), &readfds);
+            FD_SET(pcap_get_selectable_fd(batch_handle), &readfds);
             
-            int select_result = select(pcap_get_selectable_fd(handle) + 1, &readfds, NULL, NULL, &timeout);
+            int select_result = select(pcap_get_selectable_fd(batch_handle) + 1, &readfds, NULL, NULL, &timeout);
             
-            if (select_result > 0 && FD_ISSET(pcap_get_selectable_fd(handle), &readfds)) {
-                int res = pcap_next_ex(handle, &header, &pkt_data);
+            if (select_result > 0 && FD_ISSET(pcap_get_selectable_fd(batch_handle), &readfds)) {
+                int res = pcap_next_ex(batch_handle, &header, &pkt_data);
                 
                 if (res == 1) {
                     // 有响应，检查是否为RST - 添加边界检查
@@ -856,6 +874,8 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
             libnet_clear_packet(batch_l);
         }
         
+        // 清理批次资源
+        pcap_close(batch_handle);
         libnet_destroy(batch_l);
     };
     
