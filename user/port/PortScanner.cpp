@@ -752,20 +752,20 @@ void tcp_fin_scan(const std::string& ip, int port) {
     char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
     std::string iface = get_default_iface();
     std::cout << "抓包网卡: " << iface << " 目标IP: " << ip << std::endl;
-    pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 2, pcap_errbuf);
+    pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 200, pcap_errbuf);
     if (!handle) {
         std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
         return;
     }
-    std::string filter_exp = "tcp and src host " + ip;
-    std::cout << "pcap filter: " << filter_exp << std::endl;
-    struct bpf_program fp;
-    if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
-        pcap_setfilter(handle, &fp) == -1) {
-        std::cerr << "pcap filter error" << std::endl;
-        pcap_close(handle);
-        return;
-    }
+    // std::string filter_exp = "tcp and src host " + ip;
+    // std::cout << "pcap filter: " << filter_exp << std::endl;
+    // struct bpf_program fp;
+    // if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
+    //     pcap_setfilter(handle, &fp) == -1) {
+    //     std::cerr << "pcap filter error" << std::endl;
+    //     pcap_close(handle);
+    //     return;
+    // }
 
     std::atomic<bool> got_result(false);
     std::string result_msg;
@@ -783,11 +783,11 @@ void tcp_fin_scan(const std::string& ip, int port) {
             }
             struct pcap_pkthdr* header;
             const u_char* pkt_data;
-            std::cout << "[DEBUG] 11Waiting for packets..." << std::endl;
+            // std::cout << "[DEBUG] 11Waiting for packets..." << std::endl;
 
             int res = pcap_next_ex(handle, &header, &pkt_data);
 
-            std::cout << "[DEBUG] pcap_next_ex returned: " << res << std::endl;
+            // std::cout << "[DEBUG] pcap_next_ex returned: " << res << std::endl;
 
             if (res == 1) {
                 const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
@@ -806,7 +806,7 @@ void tcp_fin_scan(const std::string& ip, int port) {
             } else if (res == 0) {
                 // 超时，无包到达
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                std::cout << "[DEBUG] pcap_next_ex timeout, waiting for packets..." << std::endl;
+                // std::cout << "[DEBUG] pcap_next_ex timeout, waiting for packets..." << std::endl;
             } else if (res == -1) {
                 std::cerr << "[DEBUG] pcap_next_ex error: " << pcap_geterr(handle) << std::endl;
                 break;
@@ -816,7 +816,7 @@ void tcp_fin_scan(const std::string& ip, int port) {
     });
 
     char errbuf[LIBNET_ERRBUF_SIZE] = {0};
-    libnet_t *l = libnet_init(LIBNET_RAW4, nullptr, errbuf);
+    libnet_t *l = libnet_init(LIBNET_RAW4, iface.c_str(), errbuf);
     if (!l) {
         std::cerr << "libnet_init() failed: " << errbuf << std::endl;
         got_result = true;
@@ -842,11 +842,11 @@ void tcp_fin_scan(const std::string& ip, int port) {
         return;
     }
 
-    std::cout << "[DEBUG] SYN packet sent to port " << port << " from source port " << src_port << std::endl;
+    // std::cout << "[DEBUG] SYN packet sent to port " << port << " from source port " << src_port << std::endl;
     
     sniffer.join();
 
-    std::cout << "[DEBUG] Sniffer thread finished" << std::endl;
+    // std::cout << "[DEBUG] Sniffer thread finished" << std::endl;
 
     if (!result_msg.empty()) {
         std::cout << result_msg << std::endl;
