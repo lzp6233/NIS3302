@@ -505,6 +505,7 @@ void ScanAllPorts(std::string hostNameArg) {
       return;
     }
   }
+  std::cout << "开始扫描所有端口 (1-65535) ..." << std::endl;
   std::vector<std::thread*> portTests;
   std::vector<int> buffer;
   int numOfTasks = 1000;
@@ -519,6 +520,7 @@ void ScanAllPorts(std::string hostNameArg) {
       delete portTests.at(j);
     }
     portTests = {};
+    std::cout << "已完成 " << ((i+1)*numOfTasks) << "/65535 个端口扫描" << std::endl;
   }
   for (int i = 1; i <= 535; i++) {
     portTests.push_back(new std::thread(ThreadTask, &buffer, ip_addr, i+65000));
@@ -529,14 +531,15 @@ void ScanAllPorts(std::string hostNameArg) {
   for (int i = 0; i < 535; i++) {
     delete portTests.at(i);
   }
+  std::cout << "已完成 65535/65535 个端口扫描" << std::endl;
   std::sort(buffer.begin(), buffer.end());
-  //print out the list of all the open ports
   if (buffer.size()==0) {
     std::cout << "No open ports" << std::endl;
   }
   else {
+    std::cout << "发现 " << buffer.size() << " 个开放端口:" << std::endl;
     for (int i = 0; i < buffer.size(); i++) {
-      std::cout << "Port " << buffer.at(i) << " is open!" << std::endl;
+      std::cout << "✓ Port " << buffer.at(i) << " is open!" << std::endl;
     }
   }
 }
@@ -705,7 +708,6 @@ void tcp_synfin_scan(const std::string& ip, int port, bool syn) {
     if (res == 1) {
         const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
         const struct tcphdr* tcp_hdr = (struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
-        // 只判断目标IP和TCP标志位，不再要求dst port等于src_port
         if (tcp_hdr->th_flags & TH_SYN && tcp_hdr->th_flags & TH_ACK) {
             std::cout << "Port " << port << " is OPEN (SYN+ACK received)\n";
         } else if (tcp_hdr->th_flags & TH_RST) {
