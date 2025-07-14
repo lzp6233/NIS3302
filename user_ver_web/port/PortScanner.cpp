@@ -323,8 +323,57 @@ void ScanCommonPorts(std::string hostNameArg) {
 
 
 std::string get_default_iface() {
-    // WSL2环境下强制使用eth0接口
-    return "eth0";
+    // 自动检测网络接口，而不是硬编码
+    struct ifaddrs *ifaddr, *ifa;
+    std::string default_iface = "eth0"; // 默认值
+    
+    if (getifaddrs(&ifaddr) == -1) {
+        std::cerr << "警告: 无法获取网络接口信息，使用默认接口 " << default_iface << std::endl;
+        return default_iface;
+    }
+    
+    // 查找第一个非回环的IPv4接口
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) continue;
+        
+        if (ifa->ifa_addr->sa_family == AF_INET) {
+            std::string iface_name = ifa->ifa_name;
+            
+            // 跳过回环接口
+            if (iface_name == "lo" || iface_name == "localhost") {
+                continue;
+            }
+            
+            // 优先选择常见的接口名称
+            if (iface_name.find("eth") == 0 || 
+                iface_name.find("ens") == 0 || 
+                iface_name.find("enp") == 0 ||
+                iface_name.find("eno") == 0) {
+                default_iface = iface_name;
+                std::cout << "检测到网络接口: " << default_iface << std::endl;
+                break;
+            }
+        }
+    }
+    
+    freeifaddrs(ifaddr);
+    
+    // 如果没有找到合适的接口，尝试常见的接口名称
+    if (default_iface == "eth0") {
+        std::vector<std::string> common_interfaces = {"eth0", "ens33", "ens160", "enp0s3", "eno1"};
+        for (const auto& iface : common_interfaces) {
+            // 简单检查接口是否存在（通过尝试打开socket）
+            int sock = socket(AF_INET, SOCK_DGRAM, 0);
+            if (sock >= 0) {
+                close(sock);
+                default_iface = iface;
+                std::cout << "使用常见接口: " << default_iface << std::endl;
+                break;
+            }
+        }
+    }
+    
+    return default_iface;
 }
 
 // 优化的TCP SYN/FIN扫描实现
