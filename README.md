@@ -1,6 +1,14 @@
-# NIS3302 信息安全科技创新
+# NIS3302 信息安全科技创新 - 网络端口扫描系统
 
-本项目为信息安全科技创新课程的小组作业，旨在实现一个基础的网络端口扫描系统，支持ICMP、TCP和UDP协议的端口扫描。项目使用C++编写，采用面向对象的设计模式，具有良好的可扩展性和可维护性。
+本项目为信息安全科技创新课程的小组作业，旨在实现一个多功能的网络端口扫描系统，支持ICMP、多种TCP和UDP协议的端口扫描。项目分为命令行版本和Web版本，具备以下特点：
+
+- **多协议支持**：实现了ICMP、TCP Connect、TCP SYN、TCP FIN、UDP等多种扫描协议
+- **高性能设计**：基于多线程架构，高效处理大规模端口扫描任务
+- **友好的界面**：Web版本提供直观的图形界面，实时展示扫描结果和统计图表
+- **科学的分析**：对不同协议的扫描结果进行专业分析和展示，尤其是UDP扫描结果
+- **全面的功能**：支持端口服务识别、扫描历史记录、结果导出等实用功能
+
+项目使用C++编写，采用面向对象的设计模式，具有良好的可扩展性和可维护性。Web版本使用了现代前端技术，提供了更加直观和易用的操作体验。
 
 ## 小组成员
 
@@ -15,39 +23,43 @@
 NIS3302/
 ├── README.md                # 项目说明文档
 ├── .gitignore               # Git忽略文件配置
-├── reference/               # 参考资料与实验代码
-│   ├── explain_icmp_ping/       # ICMP ping相关参考实现
-│   │   ├── build-c.sh
-│   │   ├── build-cpp.sh
-│   │   ├── LICENSE
-│   │   ├── README.md
-│   │   └── src/
-│   ├── port-scanner-cpp-main/   # 其他端口扫描器参考项目
-│   │   └── port-scanner-cpp-main/
-│   └── PortScanner-master/      # 其他端口扫描器参考项目
-│       └── PortScanner-master/
 ├── report/                  # 各类报告模板
 │   ├── 总体设计报告模板.docx
 │   ├── 结题报告模板.doc
 │   └── 选题表模板.doc
-├── user/                    # 主要代码目录
+├── user/                    # 命令行版本代码目录
 │   ├── CMakeLists.txt       # CMake构建脚本
 │   ├── main.cpp             # 程序入口
 │   ├── build/               # 构建输出目录
 │   ├── ICMP/                # ICMP协议相关实现
-│   │   ├── network.cpp
+│   │   ├── network.cpp      # 网络底层实现
 │   │   ├── network.h
-│   │   ├── ping.cpp
+│   │   ├── ping.cpp         # ICMP ping功能实现
 │   │   └── ping.h
-│   └── port/                # 端口扫描相关实现（建议将端口扫描相关源码放在此目录）
-│       └── ...              # 端口扫描相关源文件
-
+│   └── port/                # 端口扫描相关实现
+│       ├── PortScanner.cpp  # 端口扫描器核心实现
+│       └── PortScanner.h
+└── user_ver_web/            # Web版本代码目录
+    ├── CMakeLists.txt       # Web版本CMake构建脚本
+    ├── main.cpp             # Web服务器入口及接口实现
+    ├── port_scanner.html    # 前端界面（HTML, CSS, JavaScript）
+    ├── rebuild.sh           # 快速重建脚本
+    ├── build/               # Web版本构建输出目录
+    │   └── portScan         # Web版本可执行文件
+    ├── ICMP/                # ICMP协议实现（同命令行版）
+    │   ├── network.cpp
+    │   ├── network.h
+    │   ├── ping.cpp
+    │   └── ping.h
+    └── port/                # 端口扫描实现（Web适配版）
+        ├── PortScanner.cpp  # Web适配的端口扫描器实现
+        └── PortScanner.h
 ```
 
 > 说明：  
-> - 主要开发目录为 `user/`，其中 ICMP/ 负责 ICMP 协议实现，port/ 负责端口扫描实现，main.cpp 为主程序入口。  
-> - 参考项目和资料位于 reference/ 目录下，包括 explain_icmp_ping、port-scanner-cpp-main、PortScanner-master。  
-> - 报告模板和文档位于 report/。
+> - `user/`目录包含命令行版本的端口扫描器代码
+> - `user_ver_web/`目录包含Web版本的端口扫描器代码，使用了C++后端和HTML/JavaScript前端
+> - 两个版本共享相似的核心扫描逻辑，但Web版本增加了HTTP服务器和更友好的图形界面
 ## 安装说明
 ### 安装 libnet 开发库
 ```bash
@@ -119,8 +131,9 @@ sudo apt install libpcap-dev
 #### 运行后端（终端1）
 ```bash
 cd /home/zipeng_liu/NIS3302/user_ver_web/build
-sudo ./portScan
+sudo ./portScan   # 需要sudo权限以使用原始套接字
 ```
+后端启动后会监听8080端口，并提供REST API服务。
 
 #### 运行前端（终端2）
 ```bash
@@ -128,4 +141,67 @@ cd /home/zipeng_liu/NIS3302/user_ver_web
 python3 -m http.server 8000
 ```
 
-#### 浏览器访问 `http://localhost:8000/port_scanner.html`
+#### 浏览器访问
+打开浏览器访问 `http://localhost:8000/port_scanner.html`
+
+### Web版功能
+
+#### 支持的扫描类型
+1. **ICMP扫描** - 检测主机是否存活（类似ping）
+2. **TCP Connect扫描** - 标准的TCP完全连接扫描
+3. **TCP SYN扫描** - 半开放式扫描，只发送SYN包
+4. **TCP FIN扫描** - 发送FIN包的隐蔽扫描
+5. **UDP扫描** - UDP端口扫描，检测UDP服务
+
+#### 端口范围选择
+- **常用端口** - 扫描53个最常用的端口
+- **所有端口** - 扫描全部65535个端口（较耗时）
+- **自定义范围** - 手动指定要扫描的端口
+
+#### 高级选项
+- **线程数** - 控制并发扫描线程数
+- **超时时间** - 设置连接超时时间(毫秒)
+- **解析主机名** - 尝试解析扫描结果的主机名
+- **检测服务版本** - 尝试识别端口上运行的服务版本
+
+#### 结果展示
+- **扫描状态** - 实时显示扫描进度
+- **图表展示** - 用饼图显示开放/关闭/过滤端口分布
+- **端口表格** - 详细显示各端口状态和服务信息
+- **扫描历史** - 保存历史扫描记录
+- **结果导出** - 支持导出扫描结果
+
+#### UDP扫描特性
+UDP扫描结果包含三种状态：
+- **开放** - 收到UDP响应，端口确实开放
+- **开放|过滤** - 未收到响应，可能开放或被防火墙过滤
+- **关闭** - 收到ICMP端口不可达错误，端口确实关闭
+
+> 注意：UDP扫描需要root权限才能捕获ICMP错误消息，否则大多数端口会被误报为"开放|过滤"状态。
+
+## 依赖库说明
+
+### 后端依赖
+- **libnet**：用于构造和发送各类网络数据包
+  ```bash
+  sudo apt install libnet1-dev
+  ```
+
+- **libpcap**：用于捕获和分析网络数据包
+  ```bash
+  sudo apt install libpcap-dev
+  ```
+
+- **cpp-httplib**：轻量级C++ HTTP/HTTPS服务器和客户端库（已包含在代码中）
+
+- **nlohmann/json**：现代C++ JSON处理库（已包含在代码中）
+
+- **fmt**：现代C++格式化库
+  ```bash
+  sudo apt install libfmt-dev # 或通过CMake自动下载
+  ```
+
+### 前端依赖
+- **Tailwind CSS**：通过CDN引入
+- **Chart.js**：用于绘制扫描结果图表
+- **Font Awesome**：图标库
