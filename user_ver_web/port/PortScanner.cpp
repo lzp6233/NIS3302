@@ -30,6 +30,9 @@
 // 前向声明
 std::vector<int> tcpConnectScanJson(const std::string& ip, const std::vector<int>& ports);
 
+// 声明外部函数，解决未声明报错
+std::string get_interface_for_target(const std::string& target_ip);
+
 // 全局随机数生成器，提高随机性
 std::random_device rd;
 std::mt19937 gen(rd());
@@ -513,9 +516,9 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
     }
     
     char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
-    std::string iface = get_default_iface();
+    std::string iface = get_interface_for_target(ip);
     if (iface.empty()) {
-        std::cerr << "Failed to get default interface" << std::endl;
+        std::cerr << "Failed to get interface for target: " << ip << std::endl;
         std::cerr << "降级为TCP Connect扫描" << std::endl;
         libnet_destroy(l);
         return tcpConnectScanJson(ip, ports);
@@ -863,28 +866,29 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
                 struct pcap_pkthdr* header;
                 const u_char* pkt_data;
                 int res = pcap_next_ex(batch_handle, &header, &pkt_data);
-                
+                bool is_rst = false;
                 if (res == 1) {
                     // 有响应，检查是否为RST - 添加边界检查
                     if (header->len >= 14 + sizeof(struct ip)) {
                         const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
                         if (header->len >= 14 + ip_hdr->ip_hl * 4 + sizeof(struct tcphdr)) {
                             const struct tcphdr* tcp_hdr = (struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
-                            
                             // 检查是否为RST包
                             if (tcp_hdr->th_flags & TH_RST) {
+                                is_rst = true;
                                 std::cout << "端口 " << port << " 关闭 (FIN RST)" << std::endl;
-                            } else {
-                                // 收到非RST响应，可能是开放端口
-                                std::lock_guard<std::mutex> lock(resultMutex);
-                                openPorts.push_back(port);
-                                std::cout << "端口 " << port << " 开放 (FIN非RST响应)" << std::endl;
                             }
                         }
                     }
                 }
+                if (!is_rst) {
+                    // 没有收到RST，判定为开放|过滤
+                    std::lock_guard<std::mutex> lock(resultMutex);
+                    openPorts.push_back(port);
+                    std::cout << "端口 " << port << " 开放|过滤 (FIN无响应或非RST响应)" << std::endl;
+                }
             } else {
-                // 超时或没有响应，可能是开放或被过滤
+                // 超时或没有响应，判定为开放|过滤
                 std::lock_guard<std::mutex> lock(resultMutex);
                 openPorts.push_back(port);
                 std::cout << "端口 " << port << " 开放|过滤 (FIN无响应)" << std::endl;
