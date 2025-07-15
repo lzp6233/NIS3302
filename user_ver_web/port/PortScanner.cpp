@@ -344,11 +344,18 @@ std::string get_default_iface() {
                 continue;
             }
             
+            // 检查接口是否处于UP状态
+            if (!(ifa->ifa_flags & IFF_UP)) {
+                continue;
+            }
+            
             // 优先选择常见的接口名称
             if (iface_name.find("eth") == 0 || 
                 iface_name.find("ens") == 0 || 
                 iface_name.find("enp") == 0 ||
-                iface_name.find("eno") == 0) {
+                iface_name.find("eno") == 0 ||
+                iface_name.find("wlan") == 0 ||
+                iface_name.find("wlp") == 0) {
                 default_iface = iface_name;
                 std::cout << "检测到网络接口: " << default_iface << std::endl;
                 break;
@@ -360,12 +367,13 @@ std::string get_default_iface() {
     
     // 如果没有找到合适的接口，尝试常见的接口名称
     if (default_iface == "eth0") {
-        std::vector<std::string> common_interfaces = {"eth0", "ens33", "ens160", "enp0s3", "eno1"};
+        std::vector<std::string> common_interfaces = {"eth0", "ens33", "ens160", "enp0s3", "eno1", "wlan0"};
         for (const auto& iface : common_interfaces) {
-            // 简单检查接口是否存在（通过尝试打开socket）
-            int sock = socket(AF_INET, SOCK_DGRAM, 0);
-            if (sock >= 0) {
-                close(sock);
+            // 检查接口是否存在（通过尝试打开pcap）
+            char errbuf[PCAP_ERRBUF_SIZE];
+            pcap_t *test_handle = pcap_open_live(iface.c_str(), 65536, 1, 1000, errbuf);
+            if (test_handle != NULL) {
+                pcap_close(test_handle);
                 default_iface = iface;
                 std::cout << "使用常见接口: " << default_iface << std::endl;
                 break;
@@ -582,22 +590,31 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
                 continue;
             }
             
-            // 设置pcap过滤器
-            std::string filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
+            // 对MySQL和SSH端口使用更宽松的过滤器
+            std::string filter_exp;
+            if (port == 3306 || port == 22) {
+                filter_exp = "tcp and src host " + ip + " and (dst port " + std::to_string(src_port) + " or src port " + std::to_string(port) + ")";
+            } else {
+                filter_exp = "tcp and src host " + ip + " and dst port " + std::to_string(src_port);
+            }
             struct bpf_program fp;
             if (pcap_compile(batch_handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
                 pcap_setfilter(batch_handle, &fp) == -1) {
                 continue;
             }
+            // 对MySQL和SSH端口使用更长的超时时间
+            struct timeval timeout;
+            if (port == 3306 || port == 22) {
+                timeout.tv_sec = 2;  // 2秒
+                timeout.tv_usec = 0;
+            } else {
+                timeout.tv_sec = 0;  // 0秒
+                timeout.tv_usec = 800000;  // 800ms超时
+            }
             
             // 等待响应，使用适中的超时时间
             struct pcap_pkthdr* header;
             const u_char* pkt_data;
-            
-            // 设置适中的超时时间，平衡速度和准确性
-            struct timeval timeout;
-            timeout.tv_sec = 0;  // 0秒
-            timeout.tv_usec = 800000;  // 800ms超时
             
             // 使用select进行超时控制
             fd_set readfds;

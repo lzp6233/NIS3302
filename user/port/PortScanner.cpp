@@ -631,25 +631,149 @@ std::string get_default_iface() {
     struct sockaddr_in *sa;
     char addr[INET_ADDRSTRLEN];
     std::string iface;
+    std::string lo_iface; // 保存回环接口名称
 
     if (getifaddrs(&ifap) == -1) {
         perror("getifaddrs");
-        return "";
+        return "eth0"; // 返回默认接口
     }
 
     for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
         if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
             sa = (struct sockaddr_in *)ifa->ifa_addr;
             inet_ntop(AF_INET, &sa->sin_addr, addr, INET_ADDRSTRLEN);
-            // 排除回环地址（127.0.0.1），取第一个非回环的接口
-            if (strcmp(addr, "127.0.0.1") != 0) {
+            
+            // 保存回环接口名称
+            if (strcmp(addr, "127.0.0.1") == 0) {
+                lo_iface = ifa->ifa_name;
+                continue;
+            }
+            
+            // 检查接口是否处于UP状态
+            if (!(ifa->ifa_flags & IFF_UP)) {
+                continue;
+            }
+            
+            // 取第一个非回环的接口
+            if (iface.empty()) {
                 iface = ifa->ifa_name;
-                break;
             }
         }
     }
 
     freeifaddrs(ifap);
+    
+    // 如果没有找到非回环接口，尝试常见的接口名称
+    if (iface.empty()) {
+        std::vector<std::string> common_interfaces = {"eth0", "ens33", "ens160", "enp0s3", "eno1", "wlan0"};
+        for (const auto& common_iface : common_interfaces) {
+            // 检查接口是否存在（通过尝试打开pcap）
+            char errbuf[PCAP_ERRBUF_SIZE];
+            pcap_t *test_handle = pcap_open_live(common_iface.c_str(), 65536, 1, 1000, errbuf);
+            if (test_handle != NULL) {
+                pcap_close(test_handle);
+                iface = common_iface;
+                break;
+            }
+        }
+    }
+    
+    // 如果仍然没有找到，返回lo接口
+    if (iface.empty() && !lo_iface.empty()) {
+        iface = lo_iface;
+    }
+    
+    return iface;
+}
+
+// 根据目标IP智能选择接口
+std::string get_interface_for_target(const std::string& target_ip) {
+    std::cout << "[DEBUG] 目标IP: " << target_ip << std::endl;
+    
+    // 如果目标是本地主机，优先使用lo接口
+    if (target_ip == "127.0.0.1" || target_ip == "localhost") {
+        std::cout << "[DEBUG] 检测到本地主机，使用lo接口" << std::endl;
+        struct ifaddrs *ifap, *ifa;
+        if (getifaddrs(&ifap) == -1) {
+            return "lo";
+        }
+        
+        for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
+                struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
+                char addr[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &sa->sin_addr, addr, INET_ADDRSTRLEN);
+                
+                if (strcmp(addr, "127.0.0.1") == 0) {
+                    std::string lo_iface = ifa->ifa_name;
+                    freeifaddrs(ifap);
+                    std::cout << "[DEBUG] 找到lo接口: " << lo_iface << std::endl;
+                    return lo_iface;
+                }
+            }
+        }
+        freeifaddrs(ifap);
+    }
+    
+    // 对于其他IP，使用非回环接口
+    std::cout << "[DEBUG] 检测到远程主机，使用非回环接口" << std::endl;
+    struct ifaddrs *ifap, *ifa;
+    std::string iface;
+    
+    if (getifaddrs(&ifap) == -1) {
+        std::cout << "[DEBUG] getifaddrs失败，返回默认接口eth0" << std::endl;
+        return "eth0"; // 返回默认接口
+    }
+    
+    for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
+            struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
+            char addr[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &sa->sin_addr, addr, INET_ADDRSTRLEN);
+            
+            std::cout << "[DEBUG] 发现接口: " << ifa->ifa_name << " IP: " << addr << " 状态: " << (ifa->ifa_flags & IFF_UP ? "UP" : "DOWN") << std::endl;
+            
+            // 排除回环接口，只选择非回环接口
+            if (strcmp(ifa->ifa_name, "lo") == 0 || strcmp(addr, "127.0.0.1") == 0) {
+                std::cout << "[DEBUG] 跳过回环接口: " << ifa->ifa_name << std::endl;
+                continue;
+            }
+            
+            // 检查接口是否处于UP状态
+            if (!(ifa->ifa_flags & IFF_UP)) {
+                std::cout << "[DEBUG] 跳过DOWN状态接口: " << ifa->ifa_name << std::endl;
+                continue;
+            }
+            
+            // 取第一个非回环的接口
+            if (iface.empty()) {
+                iface = ifa->ifa_name;
+                std::cout << "[DEBUG] 选择接口: " << iface << std::endl;
+                break;
+            }
+        }
+    }
+    
+    freeifaddrs(ifap);
+    
+    // 如果没有找到非回环接口，尝试常见的接口名称
+    if (iface.empty()) {
+        std::cout << "[DEBUG] 未找到合适的接口，尝试常见接口名称" << std::endl;
+        std::vector<std::string> common_interfaces = {"eth0", "ens33", "ens160", "enp0s3", "eno1", "wlan0"};
+        for (const auto& common_iface : common_interfaces) {
+            // 检查接口是否存在（通过尝试打开pcap）
+            char errbuf[PCAP_ERRBUF_SIZE];
+            pcap_t *test_handle = pcap_open_live(common_iface.c_str(), 65536, 1, 1000, errbuf);
+            if (test_handle != NULL) {
+                pcap_close(test_handle);
+                iface = common_iface;
+                std::cout << "[DEBUG] 使用常见接口: " << iface << std::endl;
+                break;
+            }
+        }
+    }
+    
+    std::cout << "[DEBUG] 最终选择的接口: " << iface << std::endl;
     return iface;
 }
 
@@ -658,7 +782,7 @@ std::string get_default_iface() {
 void tcp_syn_scan(const std::string& ip, int port) {
     std::cout << "[SYN] Scanning port " << port << "..." << std::endl;
     char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
-    std::string iface = get_default_iface();
+    std::string iface = get_interface_for_target(ip);
     std::cout << "抓包网卡: " << iface << " 目标IP: " << ip << std::endl;
     pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 2000, pcap_errbuf);
     if (!handle) {
@@ -751,7 +875,7 @@ void tcp_syn_scan(const std::string& ip, int port) {
 void tcp_fin_scan(const std::string& ip, int port) {
     std::cout << "[FIN] Scanning port " << port << "..." << std::endl;
     char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
-    std::string iface = get_default_iface();
+    std::string iface = get_interface_for_target(ip);
     std::cout << "抓包网卡: " << iface << " 目标IP: " << ip << std::endl;
     pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 200, pcap_errbuf);
     if (!handle) {
@@ -923,7 +1047,7 @@ void UDPScan(const std::string& ip, int option) {
         // 抓包线程相关变量
         std::atomic<bool> got_result(false);
         std::string result_msg;
-        std::string iface = get_default_iface();
+        std::string iface = get_interface_for_target(ip);
         std::cout << "抓包网卡: " << iface << " 目标IP: " << ip << std::endl;
         char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
         pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 2000, pcap_errbuf);
