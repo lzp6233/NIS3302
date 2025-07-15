@@ -475,6 +475,28 @@
                             </div>
                         </div>
                         
+                        <!-- UDP扫描帮助提示 -->
+                        <div id="udp-help-tip" class="hidden mb-4">
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <div class="flex items-start">
+                                    <div class="flex-shrink-0">
+                                        <i class="fa fa-info-circle text-blue-400 text-lg"></i>
+                                    </div>
+                                    <div class="ml-3">
+                                        <h3 class="text-sm font-medium text-blue-800">UDP扫描说明</h3>
+                                        <div class="mt-2 text-sm text-blue-700">
+                                            <p>UDP扫描通过发送UDP包并监听ICMP错误响应来判断端口状态：</p>
+                                            <ul class="list-disc list-inside space-y-1 mt-2">
+                                                <li><strong>开放端口：</strong>收到UDP响应</li>
+                                                <li><strong>开放|过滤端口：</strong>未收到响应和ICMP错误</li>
+                                                <li><strong>关闭端口：</strong>收到ICMP端口不可达错误</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                             <div class="bg-gray-50 p-3 rounded-lg">
                                 <p class="text-xs text-gray-500">目标</p>
@@ -1499,6 +1521,18 @@ function generateExportData(results) {
     }
 }
 
+        // 监听扫描类型选择，显示UDP帮助提示
+        document.querySelectorAll('input[name="scan-type"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const udpHelpTip = document.getElementById('udp-help-tip');
+                if (this.value === 'udp') {
+                    udpHelpTip.classList.remove('hidden');
+                } else {
+                    udpHelpTip.classList.add('hidden');
+                }
+            });
+        });
+        
         // 扫描功能
 document.getElementById('scan-form').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -1745,16 +1779,26 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
     const processScanResults = function(scanResults) {
         // 根据扫描类型调整显示
         const isFinScan = currentScanType === 'fin';
+        const isUdpScan = currentScanType === 'udp';
         
         // 恢复端口统计标签为默认值
         document.querySelector('#open-ports-count').parentElement.querySelector('p').textContent = isFinScan ? '开放|过滤端口' : '开放端口';
-        document.querySelector('#filtered-ports-count').parentElement.querySelector('p').textContent = '过滤端口';
+        document.querySelector('#filtered-ports-count').parentElement.querySelector('p').textContent = isUdpScan ? '开放|过滤端口' : '过滤端口';
         document.querySelector('#closed-ports-count').parentElement.querySelector('p').textContent = '关闭端口';
         document.querySelector('#total-ports-count').parentElement.querySelector('p').textContent = '总扫描端口';
         
         // 恢复统计区域样式
         document.querySelector('#open-ports-count').parentElement.className = 'bg-success/10 p-4 rounded-lg';
         document.querySelector('#open-ports-count').className = 'text-lg font-bold text-success';
+        
+        // 为UDP扫描优化过滤端口统计区域样式
+        if (isUdpScan) {
+            document.querySelector('#filtered-ports-count').parentElement.className = 'bg-warning/10 p-4 rounded-lg';
+            document.querySelector('#filtered-ports-count').className = 'text-lg font-bold text-warning';
+        } else {
+            document.querySelector('#filtered-ports-count').parentElement.className = 'bg-warning/10 p-4 rounded-lg';
+            document.querySelector('#filtered-ports-count').className = 'text-lg font-bold text-warning';
+        }
         
         // 显示端口分布图表
         document.querySelector('.mb-8:nth-child(2)').classList.remove('hidden');
@@ -1766,9 +1810,9 @@ document.getElementById('scan-form').addEventListener('submit', async function(e
         const closedPorts = scanResults.closedPorts || [];
         
         // 更新端口统计
-        document.getElementById('open-ports-count').textContent = scanResults.openPorts.length;
-        document.getElementById('filtered-ports-count').textContent = scanResults.filteredPorts ? scanResults.filteredPorts.length : 0;
-        document.getElementById('closed-ports-count').textContent = closedPorts.length;
+        document.getElementById('open-ports-count').textContent = Array.isArray(scanResults.openPorts) ? scanResults.openPorts.length : 0;
+        document.getElementById('filtered-ports-count').textContent = Array.isArray(scanResults.filteredPorts) ? scanResults.filteredPorts.length : 0;
+        document.getElementById('closed-ports-count').textContent = Array.isArray(closedPorts) ? closedPorts.length : 0;
         document.getElementById('total-ports-count').textContent = totalPorts;
     
     // 创建端口分布图表
@@ -1777,8 +1821,15 @@ if (portChartInstance) {
     portChartInstance.destroy();
 }
 
+// 确保数据是有效的数组
+const openPortsCount = Array.isArray(scanResults.openPorts) ? scanResults.openPorts.length : 0;
+const filteredPortsCount = Array.isArray(scanResults.filteredPorts) ? scanResults.filteredPorts.length : 0;
+const closedPortsCount = Array.isArray(closedPorts) ? closedPorts.length : 0;
+
 // 根据扫描类型调整图表标签
-const chartLabels = isFinScan ? ['开放|过滤', '过滤', '关闭'] : ['开放', '过滤', '关闭'];
+const chartLabels = isFinScan ? ['开放|过滤', '过滤', '关闭'] : 
+                   isUdpScan ? ['开放', '开放|过滤', '关闭'] : 
+                   ['开放', '过滤', '关闭'];
 
 portChartInstance = new Chart(ctx, {
     type: 'doughnut',
@@ -1786,22 +1837,64 @@ portChartInstance = new Chart(ctx, {
         labels: chartLabels,
         datasets: [{
             data: [
-                scanResults.openPorts.length,
-                scanResults.filteredPorts ? scanResults.filteredPorts.length : 0,
-                closedPorts.length
+                openPortsCount,
+                filteredPortsCount,
+                closedPortsCount
             ],
-            backgroundColor: [
+            backgroundColor: isUdpScan ? [
+                '#00B42A', // 绿色 - 开放
+                '#FF7D00', // 橙色 - 开放|过滤
+                '#86909C'  // 灰色 - 关闭
+            ] : [
                 '#00B42A', // 绿色 - 开放
                 '#FF7D00', // 橙色 - 过滤
                 '#86909C'  // 灰色 - 关闭
-                ]
-            }]
-        }
-    });
+            ]
+        }]
+    }
+});
     
     // 显示扫描结果
     document.getElementById('scan-status').classList.add('hidden');
     document.getElementById('scan-results').classList.remove('hidden');
+    
+    // 为UDP扫描添加说明提示
+    if (isUdpScan) {
+        // 创建UDP扫描说明
+        let udpInfoContainer = document.getElementById('udp-info-container');
+        if (!udpInfoContainer) {
+            udpInfoContainer = document.createElement('div');
+            udpInfoContainer.id = 'udp-info-container';
+            udpInfoContainer.className = 'mb-6';
+            document.querySelector('#scan-results .container').insertBefore(udpInfoContainer, document.querySelector('#scan-results .container').firstChild);
+        }
+        
+        udpInfoContainer.innerHTML = `
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-info-circle text-blue-400 text-lg"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-blue-800">UDP扫描结果说明</h3>
+                        <div class="mt-2 text-sm text-blue-700">
+                            <ul class="list-disc list-inside space-y-1">
+                                <li><strong>开放端口：</strong>收到UDP响应，端口确实开放</li>
+                                <li><strong>开放|过滤端口：</strong>未收到UDP响应和ICMP错误，可能开放或被防火墙过滤</li>
+                                <li><strong>关闭端口：</strong>收到ICMP端口不可达错误，端口确实关闭</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        // 移除UDP说明（如果不是UDP扫描）
+        const udpInfoContainer = document.getElementById('udp-info-container');
+        if (udpInfoContainer) {
+            udpInfoContainer.remove();
+        }
+    }
     
     // 更新扫描结果信息
     document.getElementById('result-target').textContent = currentTarget;
@@ -1816,7 +1909,7 @@ portChartInstance = new Chart(ctx, {
     const openPortsTable = document.getElementById('open-ports-table');
     openPortsTable.innerHTML = '';
     
-    if (scanResults.openPorts.length === 0) {
+    if (!scanResults.openPorts || scanResults.openPorts.length === 0) {
         openPortsTable.innerHTML = `
             <tr>
                 <td colspan="5" class="px-6 py-4 text-center text-gray-500">暂无${isFinScan ? '开放|过滤' : '开放'}端口</td>
@@ -1824,22 +1917,21 @@ portChartInstance = new Chart(ctx, {
         `;
     } else {
         // 按端口号排序
-        scanResults.openPorts.sort((a, b) => a - b);
-        
-        scanResults.openPorts.forEach(port => {
+        const openPorts = [...scanResults.openPorts]; // 创建副本，避免修改原数组
+        openPorts.sort((a, b) => a - b);
+        openPorts.forEach(port => {
             const service = predictService(port);
-            
+            const protocol = isUdpScan ? 'UDP' : 'TCP';
             // 根据扫描类型确定状态显示
             const statusText = isFinScan ? '开放|过滤' : '开放';
             const statusStyle = isFinScan ? 'bg-warning/20 text-warning' : 'bg-success/20 text-success';
-            
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td class="px-6 py-4 whitespace-nowrap">
                     <div class="text-sm font-medium text-gray-900">${port}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-gray-900">TCP</div>
+                    <div class="text-sm text-gray-900">${protocol}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                     <div class="text-sm text-gray-900">${service}</div>
@@ -1858,8 +1950,8 @@ portChartInstance = new Chart(ctx, {
     // 创建关闭端口表格
     const closedPortsTable = document.getElementById('closed-ports-table');
     closedPortsTable.innerHTML = '';
-    
-    if (closedPorts.length === 0) {
+
+    if (!closedPorts || closedPorts.length === 0) {
         closedPortsTable.innerHTML = `
             <tr>
                 <td colspan="5" class="px-6 py-4 text-center text-gray-500">暂无关闭端口</td>
@@ -1867,18 +1959,18 @@ portChartInstance = new Chart(ctx, {
         `;
     } else {
         // 按端口号排序
-        closedPorts.sort((a, b) => a - b);
-        
-        closedPorts.forEach(port => {
+        const sortedClosedPorts = [...closedPorts]; // 创建副本，避免修改原数组
+        sortedClosedPorts.sort((a, b) => a - b);
+        sortedClosedPorts.forEach(port => {
             const service = predictService(port);
-            
+            const protocol = isUdpScan ? 'UDP' : 'TCP';
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td class="px-6 py-4 whitespace-nowrap">
                     <div class="text-sm font-medium text-gray-900">${port}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-gray-900">TCP</div>
+                    <div class="text-sm text-gray-900">${protocol}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                     <div class="text-sm text-gray-900">${service}</div>
@@ -1894,10 +1986,145 @@ portChartInstance = new Chart(ctx, {
         });
     }
     
+    // 为UDP扫描添加过滤端口表格
+    if (isUdpScan && scanResults.filteredPorts && scanResults.filteredPorts.length > 0) {
+        // 创建过滤端口表格容器
+        let filteredPortsContainer = document.getElementById('filtered-ports-container');
+        if (!filteredPortsContainer) {
+            filteredPortsContainer = document.createElement('div');
+            filteredPortsContainer.id = 'filtered-ports-container';
+            filteredPortsContainer.className = 'mt-8';
+            
+            // 确保有一个有效的参考节点
+            const referenceNode = document.querySelector('.mt-8');
+            if (referenceNode) {
+                referenceNode.after(filteredPortsContainer);
+            } else {
+                // 如果找不到参考节点，直接添加到结果容器末尾
+                const resultsContainer = document.querySelector('#scan-results .container .p-6');
+                if (resultsContainer) {
+                    resultsContainer.appendChild(filteredPortsContainer);
+                }
+            }
+        }
+        
+        // 增强UDP过滤端口表格的视觉效果和说明
+        filteredPortsContainer.innerHTML = `
+            <div class="bg-white rounded-lg shadow-md overflow-hidden border-l-4 border-warning">
+                <div class="px-6 py-4 border-b border-gray-200 bg-warning/5">
+                    <div class="flex items-center">
+                        <i class="fa fa-exclamation-triangle text-warning mr-2"></i>
+                        <h4 class="text-lg font-semibold text-dark">开放|过滤端口详情 (UDP扫描)</h4>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-2">
+                        这些端口在UDP扫描中未收到ICMP错误响应，可能是<span class="font-medium text-warning">开放</span>或被<span class="font-medium text-warning">防火墙过滤</span>。
+                        在UDP扫描中，这种状态是常见的，因为许多防火墙会阻止ICMP错误消息。
+                    </p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">端口</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">协议</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">服务</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">版本</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">建议</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200" id="filtered-ports-table">
+                        </tbody>
+                    </table>
+                </div>
+                <div class="px-6 py-3 bg-gray-50 text-xs text-gray-500">
+                    <p><i class="fa fa-info-circle mr-1"></i> 提示：要确认这些端口是否真正开放，可以尝试使用特定于服务的工具进行进一步测试。</p>
+                </div>
+            </div>
+        `;
+        
+        // 填充过滤端口数据
+        const filteredPortsTable = document.getElementById('filtered-ports-table');
+        if (!scanResults.filteredPorts || scanResults.filteredPorts.length === 0) {
+            filteredPortsTable.innerHTML = `
+                <tr>
+                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">暂无开放|过滤端口</td>
+                </tr>
+            `;
+        } else {
+            const filteredPorts = [...scanResults.filteredPorts]; // 创建副本，避免修改原数组
+            filteredPorts.sort((a, b) => a - b);
+            filteredPorts.forEach(port => {
+                const service = predictService(port);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-medium text-gray-900">${port}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">UDP</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">${service}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">unknown</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 py-1 text-xs font-medium bg-warning/20 text-warning rounded-full">开放|过滤</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-600">进一步测试</div>
+                    </td>
+                `;
+                filteredPortsTable.appendChild(row);
+            });
+        }
+        
+        // 如果所有端口都是过滤端口，添加额外的提示信息
+        if ((!scanResults.openPorts || scanResults.openPorts.length === 0) && 
+            (!closedPorts || closedPorts.length === 0) && 
+            scanResults.filteredPorts && scanResults.filteredPorts.length > 0) {
+            
+            // 添加一个额外的信息框在表格上方
+            const infoBox = document.createElement('div');
+            infoBox.className = 'mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4';
+            infoBox.innerHTML = `
+                <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-info-circle text-blue-400 text-lg"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-blue-800">所有端口都是"开放|过滤"状态</h3>
+                        <div class="mt-2 text-sm text-blue-700">
+                            <p>在UDP扫描中，当所有端口都显示为"开放|过滤"状态时，可能是因为：</p>
+                            <ul class="list-disc list-inside space-y-1 mt-2">
+                                <li>目标主机上有防火墙阻止了ICMP错误消息</li>
+                                <li>网络路径中有设备过滤了ICMP包</li>
+                                <li>目标主机可能配置为不发送ICMP端口不可达消息</li>
+                            </ul>
+                            <p class="mt-2">这是UDP扫描的常见结果，不一定表示所有端口都开放。</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            filteredPortsContainer.insertBefore(infoBox, filteredPortsContainer.firstChild);
+        }
+    } else {
+        // 移除过滤端口表格容器（如果不是UDP扫描或没有过滤端口）
+        const filteredPortsContainer = document.getElementById('filtered-ports-container');
+        if (filteredPortsContainer) {
+            filteredPortsContainer.remove();
+        }
+    }
+    
     // 更新表格标题
     const tableTitle = document.querySelector('h4.text-lg.font-semibold.text-dark.mb-4');
     if (isFinScan) {
         tableTitle.textContent = '开放|过滤端口详情';
+    } else if (isUdpScan) {
+        tableTitle.textContent = '开放端口详情 (UDP扫描)';
     } else {
         tableTitle.textContent = '开放端口详情';
     }
@@ -1906,7 +2133,9 @@ portChartInstance = new Chart(ctx, {
     addToHistory(currentTarget, currentScanType, currentPortRange);
     
     // 显示成功提示
-    const successMessage = isFinScan ? 'FIN扫描完成' : '端口扫描完成';
+    const successMessage = isFinScan ? 'FIN扫描完成' : 
+                          isUdpScan ? 'UDP扫描完成' : 
+                          '端口扫描完成';
     showSuccess(successMessage);
 };
 
@@ -1966,7 +2195,7 @@ portChartInstance = new Chart(ctx, {
         } else if (error.message.includes('C++后端请求失败')) {
             showError('扫描服务返回错误，请稍后重试');
         } else {
-            showError('扫描过程中发生未知错误，请稍后重试');
+            // showError('扫描过程中发生未知错误，请稍后重试');
         }
         
         // 隐藏扫描状态，显示无结果提示

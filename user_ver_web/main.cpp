@@ -12,6 +12,16 @@
 #include <arpa/inet.h>          // IP地址转换
 #include <unistd.h>             // close函数
 #include <cstring>              // memset函数
+#include <netinet/ip.h>         // IP头部定义
+#include <netinet/ip_icmp.h>    // ICMP头部定义
+
+// libpcap相关头文件（用于捕获ICMP错误消息）
+#include <pcap/pcap.h>
+#include <netinet/udp.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
+#include <netinet/if_ether.h>
+#include <ifaddrs.h>
 
 // 原有功能头文件
 #include "ICMP/ping.h"          // ICMP功能
@@ -153,6 +163,83 @@ json tcpFinScan(const std::string& target, const std::vector<int>& ports) {
     return result;
 }
 
+// 获取目标IP对应的网络接口
+std::string get_interface_for_target(const std::string& target_ip) {
+    // 如果目标是本地主机，优先使用lo接口
+    if (target_ip == "127.0.0.1" || target_ip == "localhost") {
+        struct ifaddrs *ifap, *ifa;
+        if (getifaddrs(&ifap) == -1) {
+            return "lo";
+        }
+        
+        for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
+                struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
+                char addr[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &sa->sin_addr, addr, INET_ADDRSTRLEN);
+                
+                if (strcmp(addr, "127.0.0.1") == 0) {
+                    std::string lo_iface = ifa->ifa_name;
+                    freeifaddrs(ifap);
+                    return lo_iface;
+                }
+            }
+        }
+        freeifaddrs(ifap);
+    }
+    
+    // 对于其他IP，使用非回环接口
+    struct ifaddrs *ifap, *ifa;
+    std::string iface;
+    
+    if (getifaddrs(&ifap) == -1) {
+        return "eth0"; // 返回默认接口
+    }
+    
+    for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
+            struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
+            char addr[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &sa->sin_addr, addr, INET_ADDRSTRLEN);
+            
+            // 排除回环接口，只选择非回环接口
+            if (strcmp(ifa->ifa_name, "lo") == 0 || strcmp(addr, "127.0.0.1") == 0) {
+                continue;
+            }
+            
+            // 检查接口是否处于UP状态
+            if (!(ifa->ifa_flags & IFF_UP)) {
+                continue;
+            }
+            
+            // 取第一个非回环的接口
+            if (iface.empty()) {
+                iface = ifa->ifa_name;
+                break;
+            }
+        }
+    }
+    
+    freeifaddrs(ifap);
+    
+    // 如果没有找到非回环接口，尝试常见的接口名称
+    if (iface.empty()) {
+        std::vector<std::string> common_interfaces = {"eth0", "ens33", "ens160", "enp0s3", "eno1", "wlan0"};
+        for (const auto& common_iface : common_interfaces) {
+            // 检查接口是否存在（通过尝试打开pcap）
+            char errbuf[PCAP_ERRBUF_SIZE];
+            pcap_t *test_handle = pcap_open_live(common_iface.c_str(), 65536, 1, 1000, errbuf);
+            if (test_handle != NULL) {
+                pcap_close(test_handle);
+                iface = common_iface;
+                break;
+            }
+        }
+    }
+    
+    return iface;
+}
+
 // 新增：UDP扫描函数，返回JSON结果
 json udpScan(const std::string& target, const std::vector<int>& ports) {
     json result;
@@ -160,40 +247,238 @@ json udpScan(const std::string& target, const std::vector<int>& ports) {
     std::vector<int> filteredPorts;
     std::vector<int> closedPorts;
     
-    // UDP扫描实现
+    // 增加超时时间到3秒（避免网络延迟导致漏检）
+    const int SCAN_TIMEOUT = 3;
+    
     for (int port : ports) {
+        std::atomic<bool> port_closed(false);
+        std::atomic<bool> thread_running(true);
+        std::mutex mtx;
+        std::condition_variable cv;
+        
+        // 调试标记：是否捕获到任何ICMP包
+        std::atomic<bool> captured_icmp(false);
+        
+        std::string iface = get_interface_for_target(target);
+        
+        // 打开pcap句柄（超时设为100ms，避免阻塞过久）
+        char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
+        pcap_t* handle = pcap_open_live(iface.c_str(), 65536, 1, 100, pcap_errbuf);
+        if (!handle) {
+            // 如果pcap初始化失败，使用简化的UDP扫描
+            int sock = socket(AF_INET, SOCK_DGRAM, 0);
+            if (sock < 0) {
+                closedPorts.push_back(port);
+                continue;
+            }
+            
+            struct sockaddr_in addr;
+            memset(&addr, 0, sizeof(addr));
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(port);
+            inet_pton(AF_INET, target.c_str(), &addr.sin_addr);
+
+            struct timeval tv;
+            tv.tv_sec = SCAN_TIMEOUT;
+            tv.tv_usec = 0;
+            setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+            const char* payload = "NIS3302_UDP_SCAN";
+            int send_len = sendto(sock, payload, strlen(payload), 0, (struct sockaddr*)&addr, sizeof(addr));
+            
+            if (send_len < 0) {
+                filteredPorts.push_back(port);
+                close(sock);
+                continue;
+            }
+
+            char recvbuf[1024];
+            socklen_t addrlen = sizeof(addr);
+            int ret = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, (struct sockaddr*)&addr, &addrlen);
+            
+            if (ret > 0) {
+                openPorts.push_back(port);
+            } else {
+                filteredPorts.push_back(port);
+            }
+            
+            close(sock);
+            continue;
+        }
+
+        // 设置非阻塞模式
+        if (pcap_setnonblock(handle, 1, pcap_errbuf) == -1) {
+            pcap_close(handle);
+            filteredPorts.push_back(port);
+            continue;
+        }
+
+        // 过滤规则：捕获目标IP的ICMP类型3消息（包含端口不可达）
+        std::string filter_exp = "icmp[0] == 3 and src host " + target;
+        struct bpf_program fp;
+        if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
+            pcap_setfilter(handle, &fp) == -1) {
+            pcap_close(handle);
+            filteredPorts.push_back(port);
+            continue;
+        }
+        pcap_freecode(&fp);
+
+        // 创建UDP套接字
         int sock = socket(AF_INET, SOCK_DGRAM, 0);
         if (sock < 0) {
+            pcap_close(handle);
             closedPorts.push_back(port);
             continue;
         }
-        
+
+        // 配置目标地址
         struct sockaddr_in addr;
         memset(&addr, 0, sizeof(addr));
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port);
         inet_pton(AF_INET, target.c_str(), &addr.sin_addr);
 
+        // 设置UDP接收超时（与扫描超时一致）
         struct timeval tv;
-        tv.tv_sec = 2;
+        tv.tv_sec = SCAN_TIMEOUT;
         tv.tv_usec = 0;
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-        char sendbuf[1] = {0};
-        sendto(sock, sendbuf, sizeof(sendbuf), 0, (struct sockaddr*)&addr, sizeof(addr));
+        // 抓包线程：重点调试ICMP捕获逻辑
+        std::thread sniffer([&]() {
+            auto start_time = std::chrono::steady_clock::now();
+            int pkt_count = 0;  // 记录捕获的数据包总数
 
+            while (thread_running && 
+                   std::chrono::duration_cast<std::chrono::seconds>(
+                       std::chrono::steady_clock::now() - start_time
+                   ).count() < SCAN_TIMEOUT) {
+
+                struct pcap_pkthdr* header;
+                const u_char* pkt_data;
+                int res = pcap_next_ex(handle, &header, &pkt_data);
+
+                if (res != 1) {
+                    // 无数据包或错误，短暂休眠后继续
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    continue;
+                }
+
+                pkt_count++;
+
+                // 1. 解析链路层，定位IP头部
+                int linktype = pcap_datalink(handle);
+                const u_char* ip_pkt = nullptr;
+                switch (linktype) {
+                    case DLT_EN10MB:    ip_pkt = pkt_data + 14; break;  // 以太网
+                    case DLT_LINUX_SLL: ip_pkt = pkt_data + 16; break;  // Linux虚拟链路
+                    case DLT_NULL:      ip_pkt = pkt_data + 4; break;   // _loopback
+                    case DLT_RAW:       ip_pkt = pkt_data; break;       // 原始IP包
+                    default:
+                        continue;
+                }
+
+                // 校验IP头部是否完整
+                if (ip_pkt + sizeof(struct iphdr) > pkt_data + header->caplen) {
+                    continue;
+                }
+
+                // 2. 解析IP头部
+                const struct iphdr* ip_hdr = (const struct iphdr*)ip_pkt;
+                if (ip_hdr->protocol != IPPROTO_ICMP) {
+                    continue;
+                }
+
+                // 3. 验证IP源地址
+                struct in_addr src_ip;
+                src_ip.s_addr = ip_hdr->saddr;
+                std::string src_ip_str = inet_ntoa(src_ip);
+                if (src_ip_str != target) continue;
+
+                // 4. 解析ICMP头部
+                int ip_hdr_len = ip_hdr->ihl * 4;
+                const u_char* icmp_pkt = ip_pkt + ip_hdr_len;
+                if (icmp_pkt + 2 > pkt_data + header->caplen) {  // 至少需要2字节（类型+代码）
+                    continue;
+                }
+
+                uint8_t icmp_type = icmp_pkt[0];
+                uint8_t icmp_code = icmp_pkt[1];
+                captured_icmp = true;  // 标记捕获到ICMP包
+
+                // 5. 校验ICMP类型和代码（必须是类型3，代码3才是端口不可达）
+                if (icmp_type != 3 || icmp_code != 3) {
+                    continue;
+                }
+
+                // 6. 解析ICMP中包含的原始UDP包（错误数据区）
+                const u_char* orig_ip_pkt = icmp_pkt + 8;  // 跳过ICMP错误头部（8字节）
+                if (orig_ip_pkt + sizeof(struct iphdr) > pkt_data + header->caplen) {
+                    continue;
+                }
+
+                const struct iphdr* orig_ip_hdr = (const struct iphdr*)orig_ip_pkt;
+                if (orig_ip_hdr->protocol != IPPROTO_UDP) {
+                    continue;
+                }
+
+                // 7. 解析原始UDP头部，提取目标端口
+                int orig_ip_len = orig_ip_hdr->ihl * 4;
+                const u_char* orig_udp_pkt = orig_ip_pkt + orig_ip_len;
+                if (orig_udp_pkt + sizeof(struct udphdr) > pkt_data + header->caplen) {
+                    continue;
+                }
+
+                const struct udphdr* orig_udp_hdr = (const struct udphdr*)orig_udp_pkt;
+                uint16_t orig_dst_port = ntohs(orig_udp_hdr->dest);
+
+                // 8. 验证端口是否匹配当前扫描端口
+                if (orig_dst_port == port) {
+                    port_closed = true;
+                    break;  // 找到匹配的包，退出抓包
+                }
+            }
+
+            thread_running = false;
+            cv.notify_one();
+        });
+
+        // 发送UDP探测包（使用非空载荷，提高被响应概率）
+        const char* payload = "NIS3302_UDP_SCAN";
+        int send_len = sendto(sock, payload, strlen(payload), 0, (struct sockaddr*)&addr, sizeof(addr));
+        
+        if (send_len < 0) {
+            filteredPorts.push_back(port);
+            close(sock);
+            pcap_close(handle);
+            continue;
+        }
+
+        // 等待UDP响应
         char recvbuf[1024];
         socklen_t addrlen = sizeof(addr);
         int ret = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, (struct sockaddr*)&addr, &addrlen);
-        
-        if (ret < 0) {
-            // 没有响应，可能是开放或被过滤
-            filteredPorts.push_back(port);
-        } else {
-            // 收到响应，端口开放
-            openPorts.push_back(port);
+
+        // 等待抓包线程结束
+        {
+            std::unique_lock<std::mutex> lock(mtx);
+            cv.wait_for(lock, std::chrono::seconds(SCAN_TIMEOUT), [&]{ return !thread_running; });
         }
-        
+        thread_running = false;
+        sniffer.join();
+
+        // 最终判定
+        if (port_closed) {
+            closedPorts.push_back(port);
+        } else if (ret > 0) {
+            openPorts.push_back(port);
+        } else {
+            filteredPorts.push_back(port);
+        }
+
+        // 清理资源
+        pcap_close(handle);
         close(sock);
     }
     
