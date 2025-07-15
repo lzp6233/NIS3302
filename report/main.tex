@@ -184,31 +184,31 @@ Web前端模块负责提供用户界面和交互功能，采用响应式设计�
 \begin{verbatim}
 bool TestPortConnection(std::string ip, int port);
 \end{verbatim}
-\textbf{说明}：测试指定IP和端口是否开放
+\textbf{功能}：测试指定IP和端口是否开放
 
 \textbf{函数声明}：
 \begin{verbatim}
 std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports);
 \end{verbatim}
-\textbf{说明}：对指定IP和端口列表进行TCP SYN扫描，返回开放端口列表
+\textbf{功能}：对指定IP和端口列表进行TCP SYN扫描，返回开放端口列表
 
 \textbf{函数声明}：
 \begin{verbatim}
 std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& ports);
 \end{verbatim}
-\textbf{说明}：对指定IP和端口列表进行TCP FIN扫描，返回开放端口列表
+\textbf{功能}：对指定IP和端口列表进行TCP FIN扫描，返回开放端口列表
 
 \textbf{函数声明}：
 \begin{verbatim}
 std::vector<int> tcpConnectScanJson(const std::string& ip, const std::vector<int>& ports);
 \end{verbatim}
-\textbf{说明}：对指定IP和端口列表进行TCP Connect扫描，返回开放端口列表
+\textbf{功能}：对指定IP和端口列表进行TCP Connect扫描，返回开放端口列表
 
 \textbf{函数声明}：
 \begin{verbatim}
 void UDPScan(const std::string& ip, int option);
 \end{verbatim}
-\textbf{说明}：对指定IP进行UDP端口扫描
+\textbf{功能}：对指定IP进行UDP端口扫描
 
 \subsection{ICMP扫描模块设计}
 
@@ -250,25 +250,25 @@ std::optional<double_milliseconds> icmp_ns::ping(const std::string& address, std
 \begin{verbatim}
 std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& ports);
 \end{verbatim}
-\textbf{简要说明}：对指定IP和端口列表进行TCP SYN扫描，返回开放端口列表
+\textbf{功能}：对指定IP和端口列表进行TCP SYN扫描，返回开放端口列表
 
 \textbf{函数声明}：
 \begin{verbatim}
 std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& ports);
 \end{verbatim}
-\textbf{简要说明}：对指定IP和端口列表进行TCP FIN扫描，返回开放端口列表
+\textbf{功能}：对指定IP和端口列表进行TCP FIN扫描，返回开放端口列表
 
 \textbf{函数声明}：
 \begin{verbatim}
 std::vector<int> tcpConnectScanJson(const std::string& ip, const std::vector<int>& ports);
 \end{verbatim}
-\textbf{简要说明}：对指定IP和端口列表进行TCP Connect扫描，返回开放端口列表
+\textbf{功能}：对指定IP和端口列表进行TCP Connect扫描，返回开放端口列表
 
 \textbf{函数声明}：
 \begin{verbatim}
 void UDPScan(const std::string& ip, int option);
 \end{verbatim}
-\textbf{简要说明}：对指定IP进行UDP端口扫描
+\textbf{功能}：对指定IP进行UDP端口扫描
 
 \section{系统实现与测试}
 
