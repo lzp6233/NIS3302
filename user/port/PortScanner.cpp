@@ -23,6 +23,7 @@
 #include <ifaddrs.h>
 #include "../ICMP/network.h"
 #include <netinet/udp.h>  // 包含UDP头部定义
+#include <netinet/ip_icmp.h>
 std::mutex bufferLock;
 
 
@@ -1027,6 +1028,14 @@ void TCPFinScan(const std::string& ip, int option) {
 
 
 // UDP端口扫描实现
+// 
+// 调试用：打印ICMP消息详情
+void print_icmp_debug(uint8_t type, uint8_t code, uint16_t orig_port) {
+    std::cout << "【ICMP调试】类型: " << (int)type 
+              << ", 代码: " << (int)code 
+              << ", 原始端口: " << orig_port << std::endl;
+}
+
 void UDPScan(const std::string& ip, int option) {
     std::vector<int> ports;
     if (option == 0) {
@@ -1043,142 +1052,232 @@ void UDPScan(const std::string& ip, int option) {
         return;
     }
     std::cout << "[UDP] 扫描 " << ip << " ...\n";
+
+    // 增加超时时间到3秒（避免网络延迟导致漏检）
+    const int SCAN_TIMEOUT = 3;
+
     for (int port : ports) {
-        // 抓包线程相关变量
-        std::atomic<bool> got_result(false);
-        std::string result_msg;
+        std::atomic<bool> port_closed(false);
+        std::atomic<bool> thread_running(true);
+        std::mutex mtx;
+        std::condition_variable cv;
+
+        // 调试标记：是否捕获到任何ICMP包
+        std::atomic<bool> captured_icmp(false);
+
         std::string iface = get_interface_for_target(ip);
-        std::cout << "抓包网卡: " << iface << " 目标IP: " << ip << std::endl;
+        std::cout << "\n=== 扫描端口 " << port << " ===" << std::endl;
+        std::cout << "抓包网卡: " << iface << ", 目标IP: " << ip << std::endl;
+
+        // 打开pcap句柄（超时设为100ms，避免阻塞过久）
         char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
-        pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 2000, pcap_errbuf);
+        pcap_t* handle = pcap_open_live(iface.c_str(), 65536, 1, 100, pcap_errbuf);
         if (!handle) {
-            std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
+            std::cerr << "❌ pcap_open_live失败: " << pcap_errbuf << std::endl;
             continue;
         }
 
-        std::string filter_exp = "icmp and src host " + ip;
-        struct bpf_program fp;
-        if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
-            pcap_setfilter(handle, &fp) == -1) {
-            std::cerr << "pcap filter error" << std::endl;
+        // 设置非阻塞模式
+        if (pcap_setnonblock(handle, 1, pcap_errbuf) == -1) {
+            std::cerr << "❌ pcap_setnonblock失败: " << pcap_errbuf << std::endl;
             pcap_close(handle);
             continue;
         }
-        
-        // 启用过滤规则：只捕获目标IP的ICMP端口不可达消息
-        // std::string filter_exp = "icmp[0] == 3 and icmp[1] == 3 and src host " + ip;
-        // struct bpf_program fp;
-        // if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1) {
-        //     std::cerr << "pcap_compile error: " << pcap_geterr(handle) << std::endl;
-        //     pcap_close(handle);
-        //     continue;
-        // }
-        // if (pcap_setfilter(handle, &fp) == -1) {
-        //     std::cerr << "pcap_setfilter error: " << pcap_geterr(handle) << std::endl;
-        //     pcap_freecode(&fp);
-        //     pcap_close(handle);
-        //     continue;
-        // }
-        // pcap_freecode(&fp);
 
-        // 抓包线程：监听ICMP端口不可达
+        // 过滤规则：捕获目标IP的ICMP类型3消息（包含端口不可达）
+        std::string filter_exp = "icmp[0] == 3 and src host " + ip;
+        struct bpf_program fp;
+        if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1) {
+            std::cerr << "❌ pcap_compile失败: " << pcap_geterr(handle) << std::endl;
+            pcap_close(handle);
+            continue;
+        }
+        if (pcap_setfilter(handle, &fp) == -1) {
+            std::cerr << "❌ pcap_setfilter失败: " << pcap_geterr(handle) << std::endl;
+            pcap_freecode(&fp);
+            pcap_close(handle);
+            continue;
+        }
+        pcap_freecode(&fp);
+        std::cout << "✅ 过滤规则应用成功: " << filter_exp << std::endl;
+
+        // 创建UDP套接字
         int sock = socket(AF_INET, SOCK_DGRAM, 0);
         if (sock < 0) {
-            std::cerr << "Socket creation failed for port " << port << std::endl;
+            std::cerr << "❌ 创建UDP套接字失败: " << strerror(errno) << std::endl;
             pcap_close(handle);
             continue;
         }
 
+        // 配置目标地址
         struct sockaddr_in addr;
         memset(&addr, 0, sizeof(addr));
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port);
         inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
 
-        // 设置UDP接收超时
+        // 设置UDP接收超时（与扫描超时一致）
         struct timeval tv;
-        tv.tv_sec = 2;
+        tv.tv_sec = SCAN_TIMEOUT;
         tv.tv_usec = 0;
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
+        // 抓包线程：重点调试ICMP捕获逻辑
         std::thread sniffer([&]() {
-            auto start = std::chrono::steady_clock::now();
-            while (!got_result && std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+            auto start_time = std::chrono::steady_clock::now();
+            int pkt_count = 0;  // 记录捕获的数据包总数
+
+            while (thread_running && 
+                   std::chrono::duration_cast<std::chrono::seconds>(
+                       std::chrono::steady_clock::now() - start_time
+                   ).count() < SCAN_TIMEOUT) {
+
                 struct pcap_pkthdr* header;
                 const u_char* pkt_data;
                 int res = pcap_next_ex(handle, &header, &pkt_data);
+
                 if (res != 1) {
-                    if (res == 0) std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                    else break;
+                    // 无数据包或错误，短暂休眠后继续
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
                     continue;
                 }
 
-                // 步骤1：解析链路层，定位IP头部
+                pkt_count++;
+                std::cout << "\n=== 捕获到第" << pkt_count << "个数据包 ===" << std::endl;
+
+                // 1. 解析链路层，定位IP头部
                 int linktype = pcap_datalink(handle);
                 const u_char* ip_pkt = nullptr;
-                if (linktype == DLT_EN10MB) ip_pkt = pkt_data + 14; // 以太网
-                else if (linktype == DLT_NULL) ip_pkt = pkt_data + 4;
-                else if (linktype == DLT_RAW) ip_pkt = pkt_data;
-                else if (linktype == DLT_LINUX_SLL) ip_pkt = pkt_data + 16;
-                else continue;
+                switch (linktype) {
+                    case DLT_EN10MB:    ip_pkt = pkt_data + 14; break;  // 以太网
+                    case DLT_LINUX_SLL: ip_pkt = pkt_data + 16; break;  // Linux虚拟链路
+                    case DLT_NULL:      ip_pkt = pkt_data + 4; break;   // _loopback
+                    case DLT_RAW:       ip_pkt = pkt_data; break;       // 原始IP包
+                    default:
+                        std::cout << "❌ 不支持的链路类型: " << linktype << std::endl;
+                        continue;
+                }
 
-                // 步骤2：解析IP头部，验证协议为ICMP
+                // 校验IP头部是否完整
+                if (ip_pkt + sizeof(struct iphdr) > pkt_data + header->caplen) {
+                    std::cout << "❌ IP包长度不足（至少需要" << sizeof(struct iphdr) << "字节）" << std::endl;
+                    continue;
+                }
+
+                // 2. 解析IP头部
                 const struct iphdr* ip_hdr = (const struct iphdr*)ip_pkt;
-                if (ip_hdr->protocol != IPPROTO_ICMP) continue;
+                std::cout << "IP协议: " << (ip_hdr->protocol == IPPROTO_ICMP ? "ICMP" : "未知") << std::endl;
+                if (ip_hdr->protocol != IPPROTO_ICMP) {
+                    std::cout << "❌ 非ICMP包，跳过" << std::endl;
+                    continue;
+                }
 
-                // 步骤3：验证ICMP消息的源IP是目标IP
-                struct in_addr icmp_src_addr;
-                icmp_src_addr.s_addr = ip_hdr->saddr;
-                std::string icmp_src_ip = inet_ntoa(icmp_src_addr);
-                if (icmp_src_ip != ip) continue;
+                // 3. 验证IP源地址
+                struct in_addr src_ip;
+                src_ip.s_addr = ip_hdr->saddr;
+                std::string src_ip_str = inet_ntoa(src_ip);
+                std::cout << "IP源地址: " << src_ip_str << (src_ip_str == ip ? "（匹配目标）" : "（不匹配）") << std::endl;
+                if (src_ip_str != ip) continue;
 
-                // 步骤4：解析ICMP头部，验证类型和代码（类型3，代码3）
+                // 4. 解析ICMP头部
                 int ip_hdr_len = ip_hdr->ihl * 4;
                 const u_char* icmp_pkt = ip_pkt + ip_hdr_len;
-                if (icmp_pkt + 16 > pkt_data + header->caplen) continue; // 确保数据足够
+                if (icmp_pkt + 2 > pkt_data + header->caplen) {  // 至少需要2字节（类型+代码）
+                    std::cout << "❌ ICMP头部不完整（至少需要2字节）" << std::endl;
+                    continue;
+                }
+
                 uint8_t icmp_type = icmp_pkt[0];
                 uint8_t icmp_code = icmp_pkt[1];
-                if (icmp_type != 3 || icmp_code != 3) continue;
+                captured_icmp = true;  // 标记捕获到ICMP包
 
-                // 步骤5：解析ICMP消息中包含的原始UDP包，验证目标端口
-                // 跳过ICMP头部后的8字节错误数据区，定位原始IP头部
-                const struct iphdr* orig_ip_hdr = (const struct iphdr*)(icmp_pkt + 8);
-                if (orig_ip_hdr->protocol != IPPROTO_UDP) continue; // 确保原始包是UDP
+                // 5. 校验ICMP类型和代码（必须是类型3，代码3才是端口不可达）
+                if (icmp_type != 3 || icmp_code != 3) {
+                    print_icmp_debug(icmp_type, icmp_code, 0);
+                    std::cout << "❌ 非端口不可达（类型3+代码3），跳过" << std::endl;
+                    continue;
+                }
 
-                // 解析原始UDP头部，提取目标端口
+                // 6. 解析ICMP中包含的原始UDP包（错误数据区）
+                const u_char* orig_ip_pkt = icmp_pkt + 8;  // 跳过ICMP错误头部（8字节）
+                if (orig_ip_pkt + sizeof(struct iphdr) > pkt_data + header->caplen) {
+                    std::cout << "❌ 原始IP包长度不足" << std::endl;
+                    continue;
+                }
+
+                const struct iphdr* orig_ip_hdr = (const struct iphdr*)orig_ip_pkt;
+                if (orig_ip_hdr->protocol != IPPROTO_UDP) {
+                    std::cout << "❌ 原始包非UDP协议，跳过" << std::endl;
+                    continue;
+                }
+
+                // 7. 解析原始UDP头部，提取目标端口
                 int orig_ip_len = orig_ip_hdr->ihl * 4;
-                const struct udphdr* orig_udp_hdr = (const struct udphdr*)((u_char*)orig_ip_hdr + orig_ip_len);
-                uint16_t orig_dst_port = ntohs(orig_udp_hdr->dest); // 原始UDP包的目标端口
+                const u_char* orig_udp_pkt = orig_ip_pkt + orig_ip_len;
+                if (orig_udp_pkt + sizeof(struct udphdr) > pkt_data + header->caplen) {
+                    std::cout << "❌ 原始UDP包长度不足" << std::endl;
+                    continue;
+                }
 
-                // 验证原始端口与当前扫描端口一致
+                const struct udphdr* orig_udp_hdr = (const struct udphdr*)orig_udp_pkt;
+                uint16_t orig_dst_port = ntohs(orig_udp_hdr->dest);
+                print_icmp_debug(icmp_type, icmp_code, orig_dst_port);
+
+                // 8. 验证端口是否匹配当前扫描端口
                 if (orig_dst_port == port) {
-                    result_msg = "Port " + std::to_string(port) + " is CLOSED (ICMP port unreachable)";
-                    got_result = true;
-                    break;
+                    std::cout << "✅ 匹配当前端口！判定为CLOSED" << std::endl;
+                    port_closed = true;
+                    break;  // 找到匹配的包，退出抓包
+                } else {
+                    std::cout << "❌ 端口不匹配（当前扫描" << port << "，包中是" << orig_dst_port << "）" << std::endl;
                 }
             }
+
+            std::cout << "抓包线程结束（总捕获" << pkt_count << "个包，" << (captured_icmp ? "有ICMP包" : "无ICMP包") << "）" << std::endl;
+            thread_running = false;
+            cv.notify_one();
         });
 
-        // 发送UDP探测包（必须在抓包线程启动后）
-        char sendbuf[1] = {0};
-        sendto(sock, sendbuf, sizeof(sendbuf), 0, (struct sockaddr*)&addr, sizeof(addr));
+        // 发送UDP探测包（使用非空载荷，提高被响应概率）
+        const char* payload = "NIS3302_UDP_SCAN";
+        int send_len = sendto(sock, payload, strlen(payload), 0, (struct sockaddr*)&addr, sizeof(addr));
+        if (send_len < 0) {
+            std::cerr << "❌ 发送UDP包失败: " << strerror(errno) << std::endl;
+        } else {
+            std::cout << "✅ 已发送UDP探测包（长度: " << send_len << "字节）" << std::endl;
+        }
 
-        // 主线程：等待UDP响应（不提前设置结果）
+        // 等待UDP响应
         char recvbuf[1024];
         socklen_t addrlen = sizeof(addr);
         int ret = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, (struct sockaddr*)&addr, &addrlen);
-
-        // 等待抓包线程完成，统一判断结果
-        sniffer.join();
-        if (!result_msg.empty()) {
-            // 抓包线程已判定为关闭
-            std::cout << result_msg << std::endl;
-        } else if (ret > 0) {
-            // 收到UDP响应 → 开放
-            std::cout << "Port " << port << " is open (response received)" << std::endl;
+        if (ret > 0) {
+            std::cout << "✅ 收到UDP响应（长度: " << ret << "字节）" << std::endl;
         } else {
-            // 无响应 → open|filtered
-            std::cout << "Port " << port << " is open|filtered (no response)" << std::endl;
+            std::cout << "⚠️ 未收到UDP响应（错误: " << strerror(errno) << "）" << std::endl;
+        }
+
+        // 等待抓包线程结束
+        {
+            std::unique_lock<std::mutex> lock(mtx);
+            cv.wait_for(lock, std::chrono::seconds(SCAN_TIMEOUT), [&]{ return !thread_running; });
+        }
+        thread_running = false;
+        sniffer.join();
+
+        // 最终判定
+        std::cout << "\n=== 端口" << port << "扫描结果 ===" << std::endl;
+        if (port_closed) {
+            std::cout << "✅ Port " << port << " is CLOSED (ICMP端口不可达)" << std::endl;
+        } else if (ret > 0) {
+            std::cout << "✅ Port " << port << " is OPEN (收到UDP响应)" << std::endl;
+        } else {
+            // 额外提示：是否捕获到ICMP包，帮助判断环境问题
+            if (!captured_icmp) {
+                std::cout << "⚠️ Port " << port << " is OPEN|FILTERED（未捕获到任何ICMP包，可能被防火墙拦截）" << std::endl;
+            } else {
+                std::cout << "⚠️ Port " << port << " is OPEN|FILTERED（未匹配到端口不可达消息）" << std::endl;
+            }
         }
 
         // 清理资源
