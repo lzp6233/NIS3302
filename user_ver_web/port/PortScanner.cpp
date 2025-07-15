@@ -602,14 +602,14 @@ std::vector<int> TCPSynScanJson(const std::string& ip, const std::vector<int>& p
                 pcap_setfilter(batch_handle, &fp) == -1) {
                 continue;
             }
-            // 对MySQL和SSH端口使用更长的超时时间
+            // 对MySQL、SSH和HTTP端口使用更长的超时时间
             struct timeval timeout;
-            if (port == 3306 || port == 22) {
+            if (port == 3306 || port == 22 || port == 80) {
                 timeout.tv_sec = 2;  // 2秒
                 timeout.tv_usec = 0;
             } else {
                 timeout.tv_sec = 0;  // 0秒
-                timeout.tv_usec = 800000;  // 800ms超时
+                timeout.tv_usec = 1200000;  // 1.2秒
             }
             
             // 等待响应，使用适中的超时时间
@@ -808,6 +808,8 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
         }
         
         for (int port : portBatch) {
+            // 调试输出，确认端口被扫描
+            std::cout << "[DEBUG] 正在FIN扫描端口: " << port << std::endl;
             // 为每个端口生成唯一的源端口
             uint16_t src_port = 40000 + (dis(gen) % 20000);
             
@@ -840,14 +842,15 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
                 continue;
             }
             
-            // 等待响应，使用更短的超时时间
-            struct pcap_pkthdr* header;
-            const u_char* pkt_data;
-            
-            // 设置更短的超时时间，提高扫描速度
+            // 设置超时时间：80和3306端口都用2秒，其它端口0.8秒
             struct timeval timeout;
-            timeout.tv_sec = 0;  // 0秒
-            timeout.tv_usec = 500000;  // 500ms超时
+            if (port == 80 || port == 3306) {
+                timeout.tv_sec = 2;
+                timeout.tv_usec = 0;
+            } else {
+                timeout.tv_sec = 0;
+                timeout.tv_usec = 800000;
+            }
             
             // 使用select进行超时控制
             fd_set readfds;
@@ -857,6 +860,8 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
             int select_result = select(pcap_get_selectable_fd(batch_handle) + 1, &readfds, NULL, NULL, &timeout);
             
             if (select_result > 0 && FD_ISSET(pcap_get_selectable_fd(batch_handle), &readfds)) {
+                struct pcap_pkthdr* header;
+                const u_char* pkt_data;
                 int res = pcap_next_ex(batch_handle, &header, &pkt_data);
                 
                 if (res == 1) {
@@ -880,8 +885,6 @@ std::vector<int> TCPFinScanJson(const std::string& ip, const std::vector<int>& p
                 }
             } else {
                 // 超时或没有响应，可能是开放或被过滤
-                // 根据RFC 793，开放端口应该忽略FIN包，所以无响应可能表示开放
-                // 但防火墙也可能过滤FIN包，所以标记为"开放|过滤"
                 std::lock_guard<std::mutex> lock(resultMutex);
                 openPorts.push_back(port);
                 std::cout << "端口 " << port << " 开放|过滤 (FIN无响应)" << std::endl;
