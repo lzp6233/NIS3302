@@ -502,14 +502,17 @@ void ScanAllPorts(std::string hostNameArg) {
   if (hostNameArg.find_first_not_of("0123456789.") != std::string::npos) {
     ip_addr = dns_lookup(hostNameArg);
     if (ip_addr.empty()) {
-      std::cerr << "DNS lookup failed for " << hostNameArg << std::endl;
-      std::cout << "No open ports" << std::endl;
+      std::cerr << "[✗] DNS解析失败: " << hostNameArg << std::endl;
+      std::cout << "[*] 未发现开放端口" << std::endl;
       return;
     }
   }
+  std::cout << "[+] 开始扫描所有端口..." << std::endl;
   std::vector<std::thread*> portTests;
   std::vector<int> buffer;
   int numOfTasks = 1000;
+  int total_progress = 65;
+  
   for (int i = 0; i < 65; i++) {
     for (int j = 1; j < numOfTasks+1; j++) {
       portTests.push_back(new std::thread(ThreadTask, &buffer, ip_addr, (i*numOfTasks)+j));
@@ -521,7 +524,15 @@ void ScanAllPorts(std::string hostNameArg) {
       delete portTests.at(j);
     }
     portTests = {};
+    
+    // 显示进度
+    int percent = ((i+1) * 100) / total_progress;
+    std::cout << "\r[*] 进度: [" << std::string(percent/5, '#') << std::string(20-percent/5, ' ') 
+              << "] " << percent << "% 已扫描" << std::flush;
   }
+  std::cout << std::endl;
+  
+  std::cout << "[*] 扫描高端口 (65000-65535)..." << std::endl;
   for (int i = 1; i <= 535; i++) {
     portTests.push_back(new std::thread(ThreadTask, &buffer, ip_addr, i+65000));
   }
@@ -532,13 +543,18 @@ void ScanAllPorts(std::string hostNameArg) {
     delete portTests.at(i);
   }
   std::sort(buffer.begin(), buffer.end());
+  
   //print out the list of all the open ports
+  std::cout << "\n[+] 扫描结果" << std::endl;
+  std::cout << std::string(60, '-') << std::endl;
+  
   if (buffer.size()==0) {
-    std::cout << "No open ports" << std::endl;
+    std::cout << "[*] 未发现开放端口" << std::endl;
   }
   else {
+    std::cout << "[✓] 共发现 " << buffer.size() << " 个开放端口:" << std::endl;
     for (int i = 0; i < buffer.size(); i++) {
-      std::cout << "Port " << buffer.at(i) << " is open!" << std::endl;
+      std::cout << "    端口 " << buffer.at(i) << " 已开放" << std::endl;
     }
   }
 }
@@ -546,7 +562,7 @@ void ScanAllPorts(std::string hostNameArg) {
 void ScanSpecificPort(std::string hostNameArg, int port) {
     //test port number
     if (port<1||port>65535) {
-        std::cout << "Invalid port number." << std::endl;
+        std::cout << "[✗] 无效的端口号" << std::endl;
         return;
     }
     // 先做一次域名解析
@@ -554,20 +570,20 @@ void ScanSpecificPort(std::string hostNameArg, int port) {
     if (hostNameArg.find_first_not_of("0123456789.") != std::string::npos) {
         ip_addr = dns_lookup(hostNameArg);
         if (ip_addr.empty()) {
-            std::cerr << "DNS lookup failed for " << hostNameArg << std::endl;
-            std::cout << "Port " << port << " is closed." << std::endl;
+            std::cerr << "[✗] DNS解析失败: " << hostNameArg << std::endl;
+            std::cout << "[✗] 端口 " << port << " 已关闭" << std::endl;
             return;
         }
     }
     
-    std::cout << "正在测试端口 " << port << " (" << ip_addr << ")..." << std::endl;
+    std::cout << "[*] 正在测试端口 " << port << " (" << ip_addr << ")..." << std::endl;
     
     //test connection
     if (TestPortConnection(ip_addr, port)){
-        std::cout << "✓ Port " << port << " is open!" << std::endl;
+        std::cout << "[✓] 端口 " << port << " 已开放!" << std::endl;
     }
     else {
-        std::cout << "✗ Port " << port << " is closed." << std::endl;
+        std::cout << "[✗] 端口 " << port << " 已关闭" << std::endl;
     }
 }
 
@@ -577,13 +593,15 @@ void ScanCommonPorts(std::string hostNameArg) {
   if (hostNameArg.find_first_not_of("0123456789.") != std::string::npos) {
     ip_addr = dns_lookup(hostNameArg);
     if (ip_addr.empty()) {
-      std::cerr << "DNS lookup failed for " << hostNameArg << std::endl;
-      std::cout << "No open ports" << std::endl;
+      std::cerr << "[✗] DNS解析失败: " << hostNameArg << std::endl;
+      std::cout << "[*] 未发现开放端口" << std::endl;
       return;
     }
   }
   
-  std::cout << "开始扫描常见端口 (共" << commonPorts.size() << "个端口)..." << std::endl;
+  std::cout << "[+] 扫描常见端口" << std::endl;
+  std::cout << std::string(60, '-') << std::endl;
+  std::cout << "[*] 目标: " << ip_addr << "，共" << commonPorts.size() << "个常见端口" << std::endl;
   
   std::vector<int> buffer;
   const int max_concurrent_threads = 80; // 限制并发线程数，避免资源竞争
@@ -604,24 +622,30 @@ void ScanCommonPorts(std::string hostNameArg) {
     }
     
     // 显示进度
-    std::cout << "已完成 " << end << "/" << commonPorts.size() << " 个端口扫描" << std::endl;
+    int percent = (end * 100) / commonPorts.size();
+    std::cout << "\r[*] 进度: [" << std::string(percent/5, '#') << std::string(20-percent/5, ' ') 
+              << "] " << percent << "% 已扫描 " << end << "/" << commonPorts.size() << " 个端口" << std::flush;
     
     // 在批次之间添加短暂延迟，让系统有时间恢复
     if (end < commonPorts.size()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
   }
+  std::cout << std::endl;
   
   std::sort(buffer.begin(), buffer.end());
   
-  //print out the list of all the open ports
+  // 输出扫描结果
+  std::cout << "\n[+] 扫描结果" << std::endl;
+  std::cout << std::string(60, '-') << std::endl;
+  
   if (buffer.size()==0) {
-    std::cout << "No open ports" << std::endl;
+    std::cout << "[*] 未发现开放端口" << std::endl;
   }
   else {
-    std::cout << "发现 " << buffer.size() << " 个开放端口:" << std::endl;
+    std::cout << "[✓] 共发现 " << buffer.size() << " 个开放端口:" << std::endl;
     for (int i = 0; i < buffer.size(); i++) {
-      std::cout << "Port " << buffer.at(i) << " is open!" << std::endl;
+      std::cout << "    端口 " << buffer.at(i) << " 已开放" << std::endl;
     }
   }
 }
@@ -781,17 +805,15 @@ std::string get_interface_for_target(const std::string& target_ip) {
 
 // TCP SYN 扫描实现
 void tcp_syn_scan(const std::string& ip, int port) {
-    std::cout << "[SYN] Scanning port " << port << "..." << std::endl;
     char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
     std::string iface = get_interface_for_target(ip);
-    std::cout << "抓包网卡: " << iface << " 目标IP: " << ip << std::endl;
+    std::cout << "    扫描端口 " << port << " ..." << std::flush;
     pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 2000, pcap_errbuf);
     if (!handle) {
         std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
         return;
     }
     std::string filter_exp = "tcp and src host " + ip;
-    std::cout << "pcap filter: " << filter_exp << std::endl;
     struct bpf_program fp;
     if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1 ||
         pcap_setfilter(handle, &fp) == -1) {
@@ -864,9 +886,15 @@ void tcp_syn_scan(const std::string& ip, int port) {
 
     sniffer.join();
     if (got_result) {
-        std::cout << result_msg << std::endl;
+        if (result_msg.find("OPEN") != std::string::npos) {
+            std::cout << "\r[✓] 端口 " << port << " 已开放!" << std::endl;
+        } else if (result_msg.find("CLOSED") != std::string::npos) {
+            std::cout << "\r[✗] 端口 " << port << " 已关闭" << std::endl;
+        } else {
+            std::cout << "\r[!] 端口 " << port << " 状态未知" << std::endl;
+        }
     } else {
-        std::cout << "Port " << port << " no response (timeout)" << std::endl;
+        std::cout << "\r[!] 端口 " << port << " 无响应（超时）" << std::endl;
     }
     pcap_close(handle);
     libnet_destroy(l);
@@ -874,10 +902,9 @@ void tcp_syn_scan(const std::string& ip, int port) {
 
 // TCP FIN 扫描实现
 void tcp_fin_scan(const std::string& ip, int port) {
-    std::cout << "[FIN] Scanning port " << port << "..." << std::endl;
     char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
     std::string iface = get_interface_for_target(ip);
-    std::cout << "抓包网卡: " << iface << " 目标IP: " << ip << std::endl;
+    std::cout << "    扫描端口 " << port << " ..." << std::flush;
     pcap_t *handle = pcap_open_live(iface.c_str(), 65536, 1, 200, pcap_errbuf);
     if (!handle) {
         std::cerr << "pcap_open_live() failed: " << pcap_errbuf << std::endl;
@@ -918,9 +945,10 @@ void tcp_fin_scan(const std::string& ip, int port) {
             if (res == 1) {
                 const struct ip* ip_hdr = (struct ip*)(pkt_data + 14);
                 const struct tcphdr* tcp_hdr = (const struct tcphdr*)(pkt_data + 14 + ip_hdr->ip_hl * 4);
-                std::cout << "[DEBUG] Got TCP packet: sport=" << ntohs(tcp_hdr->th_sport)
-                          << " dport=" << ntohs(tcp_hdr->th_dport)
-                          << " flags=0x" << std::hex << (int)tcp_hdr->th_flags << std::dec << std::endl;
+                // DEBUG输出已禁用
+                // std::cout << "[DEBUG] Got TCP packet: sport=" << ntohs(tcp_hdr->th_sport)
+                //           << " dport=" << ntohs(tcp_hdr->th_dport)
+                //           << " flags=0x" << std::hex << (int)tcp_hdr->th_flags << std::dec << std::endl;
                 if (ntohs(tcp_hdr->th_dport) == src_port && ntohs(tcp_hdr->th_sport) == port) {
                     if (tcp_hdr->th_flags & TH_RST) {
                         result_msg = "Port " + std::to_string(port) + " is CLOSED (RST received)";
@@ -978,7 +1006,7 @@ void tcp_fin_scan(const std::string& ip, int port) {
         std::cout << result_msg << std::endl;
     } else {
         // FIN扫描无响应视为 open|filtered
-        std::cout << "Port " << port << " is open|filtered (no response)" << std::endl;
+        std::cout << "\r[✓] 端口 " << port << " 可能开放（无响应）" << std::endl;
     }
     pcap_close(handle);
     libnet_destroy(l);
@@ -990,19 +1018,36 @@ void TCPSynScan(const std::string& ip, int option) {
         for (int p = 1; p <= 1024; ++p) ports.push_back(p);
     } else if (option == 1) {
         int port;
-        std::cout << "Port #: ";
+        std::cout << "请输入端口号: ";
         std::cin >> port;
         ports.push_back(port);
     } else if (option == 2) {
         ports = commonPorts; // 使用预定义的常见端口
     } else {
-        std::cout << "Invalid option.\n";
+        std::cout << "[✗] 无效的选项\n";
         return;
     }
-    std::cout << "[SYN] 扫描 " << ip << " ...\n";
+    std::cout << "[+] TCP SYN 扫描" << std::endl;
+    std::cout << std::string(60, '-') << std::endl;
+    std::cout << "[*] 目标: " << ip << ", 端口数量: " << ports.size() << std::endl;
+    
+    int completed = 0;
+    int total = ports.size();
+    
     for (int port : ports) {
         tcp_syn_scan(ip, port);
+        completed++;
+        
+        if (ports.size() > 10) {
+            // 只有在端口数量较多时才显示进度
+            int percent = (completed * 100) / total;
+            std::cout << "\r[*] 进度: [" << std::string(percent/5, '#') << std::string(20-percent/5, ' ') 
+                      << "] " << percent << "% 已扫描 " << completed << "/" << total << " 个端口" << std::flush;
+            if (completed % 50 == 0) std::cout << std::endl;
+        }
     }
+    if (ports.size() > 10) std::cout << std::endl;
+    std::cout << "[+] TCP SYN 扫描完成" << std::endl;
 }
 
 void TCPFinScan(const std::string& ip, int option) {
@@ -1011,19 +1056,36 @@ void TCPFinScan(const std::string& ip, int option) {
         for (int p = 1; p <= 1024; ++p) ports.push_back(p);
     } else if (option == 1) {
         int port;
-        std::cout << "Port #: ";
+        std::cout << "请输入端口号: ";
         std::cin >> port;
         ports.push_back(port);
     } else if (option == 2) {
         ports = commonPorts;
     } else {
-        std::cout << "Invalid option.\n";
+        std::cout << "[✗] 无效的选项\n";
         return;
     }
-    std::cout << "[FIN] 扫描 " << ip << " ...\n";
+    std::cout << "[+] TCP FIN 扫描" << std::endl;
+    std::cout << std::string(60, '-') << std::endl;
+    std::cout << "[*] 目标: " << ip << ", 端口数量: " << ports.size() << std::endl;
+    
+    int completed = 0;
+    int total = ports.size();
+    
     for (int port : ports) {
         tcp_fin_scan(ip, port);
+        completed++;
+        
+        if (ports.size() > 10) {
+            // 只有在端口数量较多时才显示进度
+            int percent = (completed * 100) / total;
+            std::cout << "\r[*] 进度: [" << std::string(percent/5, '#') << std::string(20-percent/5, ' ') 
+                      << "] " << percent << "% 已扫描 " << completed << "/" << total << " 个端口" << std::flush;
+            if (completed % 50 == 0) std::cout << std::endl;
+        }
     }
+    if (ports.size() > 10) std::cout << std::endl;
+    std::cout << "[+] TCP FIN 扫描完成" << std::endl;
 }
 
 
@@ -1031,9 +1093,9 @@ void TCPFinScan(const std::string& ip, int option) {
 // 
 // 调试用：打印ICMP消息详情
 void print_icmp_debug(uint8_t type, uint8_t code, uint16_t orig_port) {
-    std::cout << "【ICMP调试】类型: " << (int)type 
-              << ", 代码: " << (int)code 
-              << ", 原始端口: " << orig_port << std::endl;
+    std::cout << "[D] ICMP消息: 类型=" << (int)type 
+              << ", 代码=" << (int)code 
+              << ", 原始端口=" << orig_port << std::endl;
 }
 
 void UDPScan(const std::string& ip, int option) {
@@ -1042,16 +1104,18 @@ void UDPScan(const std::string& ip, int option) {
         for (int p = 1; p <= 1024; ++p) ports.push_back(p);
     } else if (option == 1) {
         int port;
-        std::cout << "Port #: ";
+        std::cout << "请输入端口号: ";
         std::cin >> port;
         ports.push_back(port);
     } else if (option == 2) {
         ports = commonPorts;
     } else {
-        std::cout << "Invalid option.\n";
+        std::cout << "[✗] 无效的选项\n";
         return;
     }
-    std::cout << "[UDP] 扫描 " << ip << " ...\n";
+    std::cout << "[+] UDP 扫描" << std::endl;
+    std::cout << std::string(60, '-') << std::endl;
+    std::cout << "[*] 目标: " << ip << ", 端口数量: " << ports.size() << std::endl;
 
     // 增加超时时间到3秒（避免网络延迟导致漏检）
     const int SCAN_TIMEOUT = 3;
@@ -1066,8 +1130,8 @@ void UDPScan(const std::string& ip, int option) {
         std::atomic<bool> captured_icmp(false);
 
         std::string iface = get_interface_for_target(ip);
-        std::cout << "\n=== 扫描端口 " << port << " ===" << std::endl;
-        std::cout << "抓包网卡: " << iface << ", 目标IP: " << ip << std::endl;
+        std::cout << "\n[*] 扫描端口 " << port << std::endl;
+        std::cout << "    抓包网卡: " << iface << ", 目标IP: " << ip << std::endl;
 
         // 打开pcap句柄（超时设为100ms，避免阻塞过久）
         char pcap_errbuf[PCAP_ERRBUF_SIZE] = {0};
@@ -1099,12 +1163,12 @@ void UDPScan(const std::string& ip, int option) {
             continue;
         }
         pcap_freecode(&fp);
-        std::cout << "✅ 过滤规则应用成功: " << filter_exp << std::endl;
+        // std::cout << "✅ 过滤规则应用成功: " << filter_exp << std::endl;
 
         // 创建UDP套接字
         int sock = socket(AF_INET, SOCK_DGRAM, 0);
         if (sock < 0) {
-            std::cerr << "❌ 创建UDP套接字失败: " << strerror(errno) << std::endl;
+            std::cerr << "[✗] 创建UDP套接字失败: " << strerror(errno) << std::endl;
             pcap_close(handle);
             continue;
         }
