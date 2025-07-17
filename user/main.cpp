@@ -1,3 +1,8 @@
+/**
+ * 网络扫描工具主程序
+ * 支持ICMP扫描、TCP端口扫描和UDP端口扫描
+ * 包括Connect方式、SYN方式和FIN方式的TCP扫描
+ */
 #include <iostream>
 #include <vector>
 #include <chrono>
@@ -56,13 +61,17 @@ namespace output {
     }
 }
 
-// ICMP扫描接口
+/**
+ * ICMP扫描函数
+ * @param ip 目标IP地址
+ * @return 如果目标主机可达则返回true，否则返回false
+ */
 bool icmp_scan(const std::string& ip) {
-    const auto timeout = 2500ms;
+    const auto timeout = 2500ms;  // 超时时间设置为2500毫秒
     output::title("ICMP 扫描");
     output::info("正在 ping " + ip + " ...");
     
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 4; ++i)  // 发送4个ICMP请求
     {
         auto duration = icmp_ns::ping(ip, timeout);
         if (duration)
@@ -78,7 +87,12 @@ bool icmp_scan(const std::string& ip) {
     return true;
 }
 
-// TCP端口扫描接口
+/**
+ * TCP端口扫描函数
+ * @param ip 目标IP地址
+ * @param option 扫描选项：0-所有端口，1-指定端口，2-常见端口
+ * @return 扫描状态
+ */
 bool tcp_scan(const std::string& ip, int option) {
     output::title("TCP Connect 扫描");
     output::info("目标: " + ip);
@@ -106,6 +120,12 @@ bool tcp_scan(const std::string& ip, int option) {
 extern void TCPSynScan(const std::string& ip, int option);
 extern void TCPFinScan(const std::string& ip, int option);
 
+/**
+ * UDP端口扫描函数
+ * @param ip 目标IP地址
+ * @param option 扫描选项：0-所有端口，1-指定端口，2-常见端口
+ * @return 扫描状态
+ */
 bool udp_scan(const std::string& ip, int option) {
     output::title("UDP 扫描");
     output::info("目标: " + ip);
@@ -113,6 +133,10 @@ bool udp_scan(const std::string& ip, int option) {
     return false;   
 }
 
+/**
+ * 主函数
+ * 提供用户交互界面，并调用相应的扫描功能
+ */
 int main() {
     output::title("网络扫描工具");
     std::cout << "请选择扫描类型:\n";
@@ -127,6 +151,7 @@ int main() {
     std::cin >> scan_type;
 
     if (scan_type == 1) {
+        // ICMP扫描
         std::string target_ip;
         std::cout << "请输入目标IP地址: ";
         std::cin >> target_ip;
@@ -137,6 +162,7 @@ int main() {
             output::error("主机 " + target_ip + " 不可达");
         }
     } else if (scan_type == 2) {
+        // TCP Connect扫描
         std::string target_ip;
         std::cout << "请输入目标IP地址: ";
         std::cin >> target_ip;
@@ -165,6 +191,7 @@ int main() {
         }
     } 
     else if (scan_type == 3) {
+        // TCP SYN扫描
         std::string target_ip;
         std::cout << "请输入目标IP地址: ";
         std::cin >> target_ip;
@@ -184,6 +211,7 @@ int main() {
         TCPSynScan(target_ip, option);
     } 
     else if (scan_type == 4) {
+        // TCP FIN扫描
         std::string target_ip;
         std::cout << "请输入目标IP地址: ";
         std::cin >> target_ip;
@@ -203,6 +231,7 @@ int main() {
         TCPFinScan(target_ip, option);
     } 
     else if (scan_type == 5) {
+        // UDP扫描
         std::string target_ip;
         std::cout << "请输入目标IP地址: ";
         std::cin >> target_ip;

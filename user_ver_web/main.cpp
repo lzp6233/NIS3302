@@ -1,3 +1,11 @@
+/**
+ * WebPortScanner - 网页版端口扫描工具
+ * 主程序文件 - 提供HTTP API服务和端口扫描功能
+ * 
+ * 该程序实现了一个基于HTTP的端口扫描API服务器，支持ICMP存活检测、TCP连接扫描、
+ * TCP SYN扫描、TCP FIN扫描和UDP扫描等多种扫描方式，并提供JSON格式的扫描结果。
+ */
+
 #include <httplib.h>            // HTTP服务器库
 #include <nlohmann/json.hpp>    // JSON处理库
 #include <fmt/core.h>           // 格式化库
@@ -29,7 +37,13 @@
 
 using json = nlohmann::json;
 
-// 处理ICMP扫描请求
+/**
+ * 处理ICMP扫描请求
+ * 向目标主机发送ICMP Echo请求，检测其是否存活
+ * 
+ * @param target 目标主机IP地址或域名
+ * @return json对象，包含扫描结果信息
+ */
 json handleIcmpScan(const std::string& target) {
     json result;
     try {
@@ -52,7 +66,15 @@ json handleIcmpScan(const std::string& target) {
     return result;
 }
 
-// 新增：TCP Connect扫描函数，返回JSON结果
+/**
+ * TCP Connect扫描函数
+ * 使用TCP全连接方式扫描目标主机的指定端口
+ * 
+ * @param target 目标主机IP地址或域名
+ * @param ports 要扫描的端口列表
+ * @param threads 并发线程数
+ * @return json对象，包含开放端口、关闭端口和过滤端口的信息
+ */
 json tcpConnectScan(const std::string& target, const std::vector<int>& ports, int threads = 100) {
     json result;
     std::vector<int> openPorts;
@@ -107,7 +129,14 @@ json tcpConnectScan(const std::string& target, const std::vector<int>& ports, in
     return result;
 }
 
-// 新增：TCP SYN扫描函数，返回JSON结果
+/**
+ * TCP SYN扫描函数
+ * 使用TCP SYN半连接方式扫描目标主机的指定端口
+ * 
+ * @param target 目标主机IP地址
+ * @param ports 要扫描的端口列表
+ * @return json对象，包含开放端口、关闭端口和过滤端口的信息
+ */
 json tcpSynScan(const std::string& target, const std::vector<int>& ports) {
     json result;
     // 新实现：调用 PortScanner.cpp 的 TCPSynScanJson
@@ -135,7 +164,14 @@ json tcpSynScan(const std::string& target, const std::vector<int>& ports) {
     return result;
 }
 
-// 新增：TCP FIN扫描函数，返回JSON结果
+/**
+ * TCP FIN扫描函数
+ * 使用TCP FIN包扫描目标主机的指定端口
+ * 
+ * @param target 目标主机IP地址
+ * @param ports 要扫描的端口列表
+ * @return json对象，包含开放端口、关闭端口和过滤端口的信息
+ */
 json tcpFinScan(const std::string& target, const std::vector<int>& ports) {
     json result;
     // 新实现：调用 PortScanner.cpp 的 TCPFinScanJson
@@ -163,7 +199,13 @@ json tcpFinScan(const std::string& target, const std::vector<int>& ports) {
     return result;
 }
 
-// 获取目标IP对应的网络接口
+/**
+ * 获取目标IP对应的网络接口
+ * 根据目标IP选择合适的网络接口进行扫描
+ * 
+ * @param target_ip 目标IP地址
+ * @return 适合与目标IP通信的网络接口名称
+ */
 std::string get_interface_for_target(const std::string& target_ip) {
     // 如果目标是本地主机，优先使用lo接口
     if (target_ip == "127.0.0.1" || target_ip == "localhost") {
@@ -498,7 +540,20 @@ json udpScan(const std::string& target, const std::vector<int>& ports) {
     return result;
 }
 
-// 处理端口扫描请求
+/**
+ * 处理端口扫描请求
+ * 统一处理各种类型的端口扫描请求
+ * 
+ * @param target 目标主机IP地址或域名
+ * @param scanType 扫描类型：connect, syn, fin, udp
+ * @param portRange 端口范围：all, common, custom
+ * @param customPorts 自定义端口列表
+ * @param threads 并发线程数
+ * @param timeout 超时时间(毫秒)
+ * @param resolveHostnames 是否解析主机名
+ * @param detectService 是否检测服务
+ * @return json对象，包含扫描结果信息
+ */
 json handlePortScan(const std::string& target, 
                     const std::string& scanType,
                     const std::string& portRange, // "all", "common", "custom"
@@ -567,6 +622,10 @@ json handlePortScan(const std::string& target,
     return result;
 }
 
+/**
+ * 主函数
+ * 创建并启动HTTP服务器，处理前端请求
+ */
 int main() {
     // 创建HTTP服务器
     httplib::Server svr;
